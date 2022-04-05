@@ -41,3 +41,24 @@ class BinaryRatio:
         l2 = bound_2()
         pick = min(l1, l2) / 2
         return 0.5 + pick
+
+
+
+class RegressionRatio:
+    def __init__(self, r0):
+        self.r0 = r0
+
+    #From gen_regression_curves.py (uses a mapping)
+    def get_n_effective(self, mapping):
+        neff = np.inf
+        for k, v in mapping.items():
+            if k == 0 or k == 1:
+                continue
+            neff = min(k * (1 - k) / v, neff)
+        return neff
+
+    #From gen_regression_curves.py
+    def bound(self, alpha, n):
+        return alpha * (1 - alpha) / n
+
+    
