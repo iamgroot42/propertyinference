@@ -18,7 +18,7 @@ if __name__ == "__main__":
     #Arguments for plotting
     parser = ArgumentParser(add_help=False)
     parser.add_argument("--folderpath", help="Place all logger jsons in a folder and specify folder path (ending with /)",type=str,required=True)
-    parser.add_argument("--savepath", help="Specify save path (ending with /)", default = "", type=str)
+    parser.add_argument("--savepath", help="Specify save path (ending with /)",type=str,required=True)
     parser.add_argument("--n_effs", help="Values to plot from eyeballing (comma-separated numbers)", default = "1,10", type=str)
 
     parser.add_argument("--title", default = '', help = "Plot title",type=str)
@@ -61,4 +61,4 @@ if __name__ == "__main__":
     
     #Save plot
     graph.figure.savefig(os.path.join(
-        './plots', '%s__n_eff.png' %  (args.savepath)))
+        './plots', '%s_n_eff.png' %  (args.savepath)))

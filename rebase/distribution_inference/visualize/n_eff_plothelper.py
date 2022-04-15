@@ -7,7 +7,7 @@ import pandas as pd
 from distribution_inference.logging.core import AttackResult
 import numpy as np
 from distribution_inference.neff.neff import RegressionRatio
-
+#from neff import RegressionRatio
 #Helper class for plotting n_eff logging objects
 #Can either directly pass the path to the logger or the the logger object
 #For plots across datasets, can pass df of other PlotHelper objects
@@ -81,7 +81,7 @@ class NEffPlotHelper():
         
 
         for cc, n_eff in zip(curve_colors, n_effs):
-            plt.plot(x_axis, [self.reg_ratio.bound(x_, n_eff)
+            plt.plot(x_axis, [self.reg_ratio.bound(n_eff, alpha = x_)
                             for x_ in x_axis], '--', color=cc, label=r"$n_{leaked}=%d$" % n_eff)
 
         graph.set_title(title)
