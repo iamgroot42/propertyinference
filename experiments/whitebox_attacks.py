@@ -1,6 +1,8 @@
+"""
+    Script for executing white-box inference attacks.
+"""
 from simple_parsing import ArgumentParser
 from pathlib import Path
-from dataclasses import replace
 
 from distribution_inference.datasets.utils import get_dataset_wrapper, get_dataset_information
 from distribution_inference.attacks.utils import get_dfs_for_victim_and_adv, get_train_config_for_adv
@@ -94,7 +96,7 @@ if __name__ == "__main__":
             shuffle=False,
         )
 
-        for _ in range(attack_config.tries):
+        for trial in range(attack_config.tries):
             # Load adv models for both ratios
             dims, features_adv_1 = ds_adv_1.get_model_features(
                 train_config_adv,
@@ -131,9 +133,10 @@ if __name__ == "__main__":
 
             # Save attack parameters if requested
             if wb_attack_config.save:
+                save_string = ("%d_" % trial) + str(chosen_accuracy)
                 attacker_obj.save_model(
                     data_config_vic_2,
-                    attack_specific_info_string=str(chosen_accuracy))
+                    attack_specific_info_string=save_string)
 
     # Save logger results
     logger.save()

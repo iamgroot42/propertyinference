@@ -19,6 +19,7 @@ def get_seed_data_loader(ds_list: List[CustomDatasetWrapper],
     """
         Collect data from given datasets and wrap into a dataloader.
     """
+    warnings.warn(warning_string("\nCollecting seed data\n"))
     all_data = []
     # For each given loader
     for ds in ds_list:
@@ -44,13 +45,13 @@ def get_seed_data_loader(ds_list: List[CustomDatasetWrapper],
     # Get loader using given dataset
     loader = DataLoader(
         basic_ds,
-        # batch_size=attack_config.batch_size,
-        batch_size=32,
+        batch_size=attack_config.batch_size,
+        # batch_size=32,
         shuffle=False,
         num_workers=1,
         worker_init_fn=worker_init_fn,
         prefetch_factor=2)
-    return loader
+    return basic_ds, loader
 
 
 def wrap_into_x_y(features_list: List,

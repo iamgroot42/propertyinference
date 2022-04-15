@@ -97,7 +97,7 @@ class CustomDatasetWrapper:
         self.info_object = None
         self.skip_data = skip_data
 
-    def get_loaders(self, batch_size,
+    def get_loaders(self, batch_size: int,
                     shuffle: bool = True,
                     eval_shuffle: bool = False,
                     val_factor: float = 1,
@@ -163,9 +163,12 @@ class CustomDatasetWrapper:
                    train_config: TrainConfig,
                    n_models: int = None,
                    on_cpu: bool = False,
-                   shuffle: bool = True) -> List[nn.Module]:
+                   shuffle: bool = True,
+                   epochwise_version: bool = False):
         """
-            Load models
+            Load models. Either return list of requested models, or a 
+            list of list of models, where each nested list is the model's
+            state across iterations of being trained (sorted in epoch order)
         """
         # Get path to load models
         model_paths, folder_path, total_models = self._get_model_paths(
@@ -177,19 +180,55 @@ class CustomDatasetWrapper:
                 # Break reading if requested number of models is reached
                 if i >= n_models:
                     break
-                # Skip any directories we may stumble upon
-                if os.path.isdir(os.path.join(folder_path, mpath)):
+
+                # Skip models with model_num below train_config.offset
+                if not (mpath.startswith("adv_train_") or mpath == "full") and int(mpath.split("_")[0]) <= train_config.offset:
                     continue
-                model = self.load_model(os.path.join(
-                    folder_path, mpath), on_cpu=on_cpu)
-                models.append(model)
-                i += 1
+
+                # Skip any directories we may stumble upon
+                if epochwise_version:
+                    if os.path.isdir(os.path.join(folder_path, mpath)):
+                        # Make sure not accidentally looking into model with adv-trained models
+                        if not (mpath.startswith("adv_train_") or mpath == "full"):
+                            models_inside = []
+                            # Sort according to epoch number in the name : %d_ format
+                            files_inside = os.listdir(
+                                os.path.join(folder_path, mpath))
+                            files_inside.sort(
+                                key=lambda x: int(x.split("_")[0]))
+                            for mpath_inside in files_inside:
+                                model = self.load_model(os.path.join(
+                                    folder_path, mpath, mpath_inside),
+                                    on_cpu=on_cpu)
+                                models_inside.append(model)
+                            models.append(models_inside)
+                            i += 1
+                    else:
+                        # Not a folder- we want to look only at epoch_wise information
+                        continue
+                elif os.path.isdir(os.path.join(folder_path, mpath)):
+                    continue
+                else:
+                    model = self.load_model(os.path.join(
+                        folder_path, mpath), on_cpu=on_cpu)
+                    models.append(model)
+                    i += 1
+
                 pbar.update()
+
         if len(models) == 0:
             raise ValueError(f"No models found in the given path {folder_path}")
+
+        if epochwise_version:
+            # Assert that all models have the same number of epochs
+            if not np.all([len(x) == len(models[0]) for x in models]):
+                raise ValueError(
+                    f"Number of epochs not same in all models")
+
         if n_models is not None and len(models) != n_models:
             warnings.warn(warning_string(
                 f"\nNumber of models loaded ({len(models)}) is less than requested ({n_models})"))
+
         return np.array(models, dtype='object')
 
     def get_model_features(self,
@@ -197,9 +236,11 @@ class CustomDatasetWrapper:
                            attack_config: WhiteBoxAttackConfig,
                            n_models: int = None,
                            on_cpu: bool = False,
-                           shuffle: bool = True):
+                           shuffle: bool = True,
+                           epochwise_version: bool = False):
         """
-            Extract features for a given model
+            Extract features for a given model.
+            Make sure only the parts that are needed inside the model are extracted
         """
         # Get path to load models
         model_paths, folder_path, total_models = self._get_model_paths(
@@ -211,25 +252,60 @@ class CustomDatasetWrapper:
                 # Break reading if requested number of models is reached
                 if i >= n_models:
                     break
-                # Skip any directories we may stumble upon
-                if os.path.isdir(os.path.join(folder_path, mpath)):
+
+                # Skip models with model_num below train_config.offset
+                if not (mpath.startswith("adv_train_") or mpath == "full") and int(mpath.split("_")[0]) <= train_config.offset:
                     continue
 
-                # Load model
-                model = self.load_model(os.path.join(
-                    folder_path, mpath), on_cpu=on_cpu)
+                # Skip any directories we may stumble upon
+                if epochwise_version:
+                    if os.path.isdir(os.path.join(folder_path, mpath)):
+                        # Make sure not accidentally looking into model with adv-trained models
+                        if not (mpath.startswith("adv_train_") or mpath == "full"):
+                            features_inside = []
+                            # Sort according to epoch number in the name : %d_ format
+                            files_inside = os.listdir(
+                                os.path.join(folder_path, mpath))
+                            files_inside.sort(
+                                key=lambda x: int(x.split("_")[0]))
+                            for mpath_inside in files_inside:
+                                model = self.load_model(os.path.join(
+                                    folder_path, mpath, mpath_inside),
+                                    on_cpu=on_cpu)
+                                # Extract model features
+                                # Get model params, shift to GPU
+                                dims, feature_vector = get_weight_layers(model, attack_config)
+                                features_inside.append(feature_vector)
+                            feature_vectors.append(features_inside)
+                            i += 1
+                    else:
+                        # Not a folder- we want to look only at epoch_wise information
+                        continue
+                elif os.path.isdir(os.path.join(folder_path, mpath)):
+                    continue
+                else:
+                    # Load model
+                    model = self.load_model(os.path.join(
+                        folder_path, mpath), on_cpu=on_cpu)
 
-                # Extract model features
-                # Get model params, shift to GPU
-                dims, feature_vector = get_weight_layers(model, attack_config)
-                feature_vectors.append(feature_vector)
+                    # Extract model features
+                    # Get model params, shift to GPU
+                    dims, feature_vector = get_weight_layers(model, attack_config)
+                    feature_vectors.append(feature_vector)
+                    i += 1
 
                 # Update progress
-                i += 1
                 pbar.update(1)
 
         if len(feature_vectors) == 0:
             raise ValueError("No models found in the given path")
+
+        if epochwise_version:
+            # Assert that all models have the same number of epochs
+            if not np.all([len(x) == len(feature_vectors[0]) for x in feature_vectors]):
+                raise ValueError(
+                    f"Number of epochs not same in all models")
+
         if n_models is not None and len(feature_vectors) != n_models:
             warnings.warn(warning_string(
                 f"\nNumber of models loaded ({len(feature_vectors)}) is less than requested ({n_models})"))

@@ -8,7 +8,7 @@ from copy import deepcopy
 import warnings
 
 from distribution_inference.attacks.whitebox.core import Attack
-from distribution_inference.attacks.whitebox.permutation.models import PermInvModel, FullPermInvModel
+from distribution_inference.attacks.whitebox.permutation.models import PermInvModel, FullPermInvModel, PermInvConvModel
 from distribution_inference.config import WhiteBoxAttackConfig, DatasetConfig
 from distribution_inference.utils import log, get_save_path, warning_string, ensure_dir_exists
 
@@ -22,9 +22,21 @@ class PINAttack(Attack):
 
     def _prepare_model(self):
         if isinstance(self.dims, tuple):
-            # If dims is tuple, need joint model
-            self.model = FullPermInvModel(self.dims, dropout=0.5)
+            if self.config.permutation_config.focus == "all":
+                # If dims is tuple, need joint model
+                self.model = FullPermInvModel(self.dims, dropout=0.5)
+            elif self.config.permutation_config.focus == "conv":
+                # Focus wanted only on conv layers
+                self.model = PermInvConvModel(self.dims[0][:2], dropout=0.5)
+            elif self.config.permutation_config.focus == "fc":
+                self.model = PermInvModel(self.dims[1], dropout=0.5)
+            else:
+                raise NotImplementedError(
+                    f"Focus mode {self.config.permutation_config.focus} not supported")
         else:
+            # Focus must be on FC layers
+            if self.config.permutation_config.focus != "fc":
+                raise AssertionError("Mode must be FC if model has only FC layers")
             # Define meta-classifier
             self.model = PermInvModel(self.dims, dropout=0.5)
         if self.config.gpu:
@@ -49,16 +61,44 @@ class PINAttack(Attack):
             get_save_path(),
             model_dir,
             data_config.name,
-            data_config.prop)
-        if self.config.regression_config is not None:
+            data_config.prop,
+            self.config.permutation_config.focus)
+        if self.config.regression_config is None:
             save_path = os.path.join(save_path, str(data_config.value))
 
         # Make sure folder exists
         ensure_dir_exists(save_path)
 
         model_save_path = os.path.join(
-            save_path, f"{self.config.permutation_config.focus}_{attack_specific_info_string}.ch")
+            save_path,
+            f"{attack_specific_info_string}.ch")
         ch.save(self.model.state_dict(), model_save_path)
+
+    def _eval_attack(self, test_loader, epochwise_version: bool = False):
+        """
+            Evaluate attack on test data
+        """
+        regression = (self.config.regression_config is not None)
+        if regression:
+            loss_fn = nn.MSELoss()
+        else:
+            if self.config.binary:
+                loss_fn = nn.BCEWithLogitsLoss()
+            else:
+                loss_fn = nn.CrossEntropyLoss()
+
+        if epochwise_version:
+            evals = []
+            # One loader per epoch
+            for test_datum_loader in tqdm(test_loader):
+                evals.append(
+                    self._test(self.model, loss_fn,
+                               loader=test_datum_loader,
+                               verbose=False)[0])
+            return evals
+        else:
+            return self._test(self.model, loss_fn,
+                              loader=test_loader, verbose=True)[0]
 
     def execute_attack(self,
                        train_loader: Tuple[List, List],
@@ -201,6 +241,10 @@ class PINAttack(Attack):
         # Make sure model is in evaluation mode
         model.eval()
 
+        # Compute test accuracy on this model
+        t_acc, t_loss = self._test(
+            model, loss_fn, test_loader)
+
         if regression:
             return model, t_loss
         return model, t_acc
@@ -210,7 +254,8 @@ class PINAttack(Attack):
               model, loss_fn,
               loader: ch.utils.data.DataLoader,
               element_wise: bool = False,
-              get_preds: bool = False):
+              get_preds: bool = False,
+              verbose: bool = False):
         # Set model to evaluation mode
         model.eval()
         regression = (self.config.regression_config is not None)
@@ -220,7 +265,10 @@ class PINAttack(Attack):
         loss = [] if element_wise else 0
         all_outputs = []
 
-        for param_batch, y_batch in loader:
+        iterator = loader
+        if verbose:
+            iterator = tqdm(loader)
+        for param_batch, y_batch in iterator:
             outputs = []
             if self.config.gpu:
                 y_batch = y_batch.cuda(0)

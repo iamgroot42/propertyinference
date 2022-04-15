@@ -13,6 +13,7 @@ from distribution_inference.models.core import BoneModel, DenseNet
 from distribution_inference.config import DatasetConfig, TrainConfig
 from distribution_inference.utils import ensure_dir_exists
 import distribution_inference.datasets.utils as utils
+from distribution_inference.training.utils import load_model
 
 
 class DatasetInformation(base.DatasetInformation):
@@ -25,7 +26,9 @@ class DatasetInformation(base.DatasetInformation):
                          values={"gender": ratios})
         self.supported_properties = ["gender"]
 
-    def get_model(self, cpu: bool = False, full_model: bool = False) -> nn.Module:
+    def get_model(self,
+                  cpu: bool = False,
+                  full_model: bool = False) -> nn.Module:
         if full_model:
             model = DenseNet(1024)
         else:
@@ -34,7 +37,7 @@ class DatasetInformation(base.DatasetInformation):
             model = model.cuda()
         return model
 
-    def _stratified_df_split(df, second_ratio):
+    def _stratified_df_split(df, second_ratio: float):
         # Get new column for stratification purposes
         def fn(row): return str(row.gender) + str(row.label)
         col = df.apply(fn, axis=1)
@@ -95,7 +98,7 @@ class DatasetInformation(base.DatasetInformation):
 
         return ch.cat(all_features, 0)
 
-    def _get_df(self, split):
+    def _get_df(self, split: str):
         df_train = pd.read_csv(os.path.join(
             self.base_data_dir, "%s/train.csv" % split))
         df_val = pd.read_csv(os.path.join(
@@ -103,7 +106,7 @@ class DatasetInformation(base.DatasetInformation):
 
         return df_train, df_val
 
-    def _extract_pretrained_features(self, df, split):
+    def _extract_pretrained_features(self, df, split: str):
         # Load model
         model = self._get_pre_processor()
         model = model.cuda()
@@ -142,8 +145,10 @@ class DatasetInformation(base.DatasetInformation):
                                          adv_ratio: float = 0.33,
                                          test_ratio: float = 0.2,
                                          num_tries: int = None):
-        base_path = os.path.abspath(os.path.join(self.base_data_dir, os.pardir))
-        df_victim, df_adv = self._process_data(base_path, split_second_ratio=adv_ratio)
+        base_path = os.path.abspath(
+            os.path.join(self.base_data_dir, os.pardir))
+        df_victim, df_adv = self._process_data(
+            base_path, split_second_ratio=adv_ratio)
 
         def useful_stats(df):
             print("%d | %.2f | %.2f" % (
@@ -253,6 +258,11 @@ class BoneWrapper(base.CustomDatasetWrapper):
     def _filter(self, x):
         return x["gender"] == 1
 
+    def load_model(self, path: str, on_cpu: bool = False) -> nn.Module:
+        info_object = DatasetInformation()
+        model = info_object.get_model(cpu=on_cpu)
+        return load_model(model, path)
+
     def load_data(self):
         # Define DI object
         self.info_object = DatasetInformation()
@@ -276,12 +286,14 @@ class BoneWrapper(base.CustomDatasetWrapper):
             self.df_val, features["val"], processed=True)
         return ds_train, ds_val
 
-    def get_loaders(self, batch_size, shuffle=False,
-                    val_factor=2, num_workers=2, prefetch_factor=2):
+    def get_loaders(self, batch_size,
+                    shuffle: bool = False,
+                    eval_shuffle: bool = False,
+                    num_workers: int = 2,
+                    prefetch_factor: int = 2):
         self.ds_train, self.ds_val = self.load_data()
         return super().get_loaders(batch_size, shuffle=shuffle,
-                                   eval_shuffle=shuffle,
-                                   val_factor=val_factor,
+                                   eval_shuffle=eval_shuffle,
                                    num_workers=num_workers,
                                    prefetch_factor=prefetch_factor)
 

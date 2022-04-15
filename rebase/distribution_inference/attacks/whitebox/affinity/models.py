@@ -12,7 +12,7 @@ class AffinityMetaClassifier(nn.Module):
                  num_dim: int,
                  num_layers: int,
                  config: AffinityAttackConfig,
-                 num_logit: int = 0,):
+                 num_logit: int = 0):
         super().__init__()
         self.num_dim = num_dim
         self.num_layers = num_layers
@@ -21,18 +21,34 @@ class AffinityMetaClassifier(nn.Module):
         self.models = []
         self.num_logit = num_logit
         self.only_latent = config.only_latent
+        self.layer_agnostic = config.layer_agnostic
+        self.inner_dims = config.inner_dims
+        self.shared_layerwise_params = config.shared_layerwise_params
+        assert len(self.inner_dims) >= 1, "inner_dims must have at least 1 element"
 
+        # Make inner model
         def make_small_model(dims):
-            return nn.Sequential(
-                nn.Linear(dims, 1024),
-                nn.ReLU(),
-                nn.Linear(1024, 64),
-                nn.ReLU(),
-                nn.Linear(64, self.num_final),
-            )
-        # Make one model per feature layer
-        for _ in range(num_layers):
-            self.models.append(make_small_model(self.num_dim))
+            layers = [
+                nn.Linear(dims, self.inner_dims[0]),
+                nn.ReLU()
+            ]
+            for i in range(1, len(self.inner_dims)):
+                layers.append(
+                    nn.Linear(self.inner_dims[i-1], self.inner_dims[i]))
+                layers.append(nn.ReLU())
+            layers.append(nn.Linear(self.inner_dims[-1], self.num_final))
+            return nn.Sequential(*layers)
+
+        inside_dim = self.num_dim
+        if self.shared_layerwise_params:
+            # Shared model across all layers
+            shared_model = make_small_model(inside_dim)
+            for _ in range(num_layers):
+                self.models.append(shared_model)
+        else:
+            # Make one model per feature layer
+            for _ in range(num_layers):
+                self.models.append(make_small_model(inside_dim))
         # If logits are also going to be provided, have a model for them as well
         if self.num_logit > 0:
             self.models.append(make_small_model(self.num_logit))
@@ -40,19 +56,24 @@ class AffinityMetaClassifier(nn.Module):
 
         num_eff_layers = self.num_layers
         num_eff_layers += 1 if self.num_logit > 0 else 0
-        self.final_layer = nn.Linear(self.num_final * num_eff_layers, 1)
+        if not self.layer_agnostic:
+            self.final_layer = nn.Linear(self.num_final * num_eff_layers, 1)
 
     def forward(self, x) -> ch.Tensor:
         # Get intermediate activations for each layer
-        # Aggreage them to get a single feature vector
+        # Aggregate them to get a single feature vector
         all_acts = []
         for i, model in enumerate(self.models):
             all_acts.append(model(x[i]))
-        all_accs = ch.cat(all_acts, 1)
+        all_acts = ch.cat(all_acts, 1)
         # Return pre-logit activations if requested
         if self.only_latent:
-            return all_accs
-        return self.final_layer(all_accs)
+            return all_acts
+        # If agnostic to number of layers, average over given layer representations
+        # and return
+        if self.layer_agnostic:
+            return ch.mean(all_acts, 1).unsqueeze(1)
+        return self.final_layer(all_acts)
 
 
 class WeightAndActMeta(nn.Module):
