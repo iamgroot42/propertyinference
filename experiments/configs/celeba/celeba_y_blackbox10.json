@@ -1,8 +1,9 @@
 {
     "train_config": {
         "data_config": {
-            "name": "new_census",
-            "prop": "race",
+            "name": "celeba",
+            "prop": "Young",
+            "classify": "Male",
             "split": "adv",
             "squeeze": true,
             "value": 0.5
@@ -14,7 +15,7 @@
     "tries": 5,
     "black_box": {
         "granularity": 0.05,
-        "num_adv_models": 30,
+        "num_adv_models": 10,
         "batch_size": 30000,
         "attack_type": [
             "loss_and_threshold",

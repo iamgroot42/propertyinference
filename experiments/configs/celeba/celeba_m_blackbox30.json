@@ -1,8 +1,9 @@
 {
     "train_config": {
         "data_config": {
-            "name": "new_census",
-            "prop": "race",
+            "name": "celeba",
+            "prop": "Male",
+            "classify": "Smiling",
             "split": "adv",
             "squeeze": true,
             "value": 0.5
