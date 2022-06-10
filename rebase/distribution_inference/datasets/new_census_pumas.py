@@ -14,14 +14,22 @@ from distribution_inference.training.utils import load_model
 
 
 class DatasetInformation(base.DatasetInformation):
-    def __init__(self, epoch_wise: bool = False):
+    def __init__(self, puma: bool = False, epoch_wise: bool = False):
+        self.puma = puma #Determine if splitting by PUMA ID or not
+        dpath = "census_new/census_2019_1year"
+        puma_datapath = "/p/adversarialml/as9rw/pumas_dataset/dataset/census"
+        if(puma):
+            dpath = puma_datapath
+
         ratios = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+
         super().__init__(name="New Census",
-                         data_path="census_new/census_2019_1year",
+                         data_path= dpath,
                          models_path="models_new_census/60_40",
                          properties=["sex", "race"],
                          values={"sex": ratios, "race": ratios},
                          property_focus={"sex": 'female', "race": 'white'})
+
 
     def get_model(self, cpu: bool = False, full_model: bool = False) -> nn.Module:
         if full_model:
@@ -67,7 +75,7 @@ class DatasetInformation(base.DatasetInformation):
         pickle.dump(train, open('./train.p', "wb"))
         pickle.dump(test, open('./test.p', "wb"))
 
-        dt = _CensusIncome()
+        dt = _CensusIncome(self.puma) #pass puma argument
 
         def fe(x):
             return x['sex'] == 1
@@ -87,7 +95,8 @@ class DatasetInformation(base.DatasetInformation):
 
 
 class _CensusIncome:
-    def __init__(self, drop_senstive_cols=False):
+    def __init__(self, puma, drop_senstive_cols=False):
+        self.puma = puma
         self.drop_senstive_cols = drop_senstive_cols
         self.columns = [
             "age", "workClass", "education-attainment",
@@ -176,7 +185,7 @@ class _CensusIncome:
         self.train_df = self.train_df.drop(columns=['is_train'], axis=1)
         self.test_df = self.test_df.drop(columns=['is_train'], axis=1)
         #######################################################################  
-        def split_puma_median(res): #Assign all PUMA IDs lower than the median of its state to the adversary and the rest to the victim
+        def split_puma_percentile(res, ratio): #Assign all PUMAs lower than the quantile of its state to the adversary and the rest to the victim
             res = res.sort_values(['ST','PUMA'])
             st = res['ST'].drop_duplicates()
             adv_df = pd.DataFrame()
@@ -185,17 +194,33 @@ class _CensusIncome:
                 print(state)
                 state_df = res.loc[(res['ST'] == state)]
                 #state_df = state_df.to_frame()
-                med = state_df['PUMA'].median()
+                quant = state_df['PUMA'].quantile(ratio)
                 #print(isinstance(state_df, pd.DataFrame))
-                adv_df = pd.concat([adv_df, state_df.loc[(state_df['PUMA'] < med)]])
-                vict_df = pd.concat([vict_df, state_df.loc[(state_df['PUMA'] >= med)]])
+                adv_df = pd.concat([adv_df, state_df.loc[(state_df['PUMA'] < quant)]])
+                vict_df = pd.concat([vict_df, state_df.loc[(state_df['PUMA'] >= quant)]])
             return adv_df, vict_df #Returns dataframes for adversary and victim splits
 
-        # Create train/test splits for victim/adv such that adversary and victim have different PUMAs
-        # This is done by assigning all PUMA IDs lower than the median of its state to the adversary and the rest to the victim
-        self.train_df_adv, self.train_df_victim = split_puma_median(self.train_df)
-        self.test_df_adv, self.test_df_victim = split_puma_median(self.train_df)
-        
+        def s_split(this_df, rs=random_state): #Split for other properties
+            sss = StratifiedShuffleSplit(n_splits=1,
+                                         test_size=test_ratio,
+                                         random_state=rs)
+            # Stratification on the properties we care about for this dataset
+            # so that adv/victim split does not introduce
+            # unintended distributional shift
+            splitter = sss.split(
+                this_df, this_df[["sex", "race", "income"]])
+            split_1, split_2 = next(splitter)
+            return this_df.iloc[split_1], this_df.iloc[split_2]
+
+        if(self.puma): #Split for PUMAs
+            # Create train/test splits for victim/adv such that adversary and victim have different PUMAs
+            # This is done by assigning all PUMA IDs lower than the quantile of its state to the adversary and the rest to the victim
+            self.train_df_adv, self.train_df_victim = split_puma_percentile(self.train_df, test_ratio)
+            self.test_df_adv, self.test_df_victim = split_puma_percentile(self.test_df, test_ratio)
+        else: #Split for other properties
+            # Create train/test splits for victim/adv
+            self.train_df_victim, self.train_df_adv = s_split(self.train_df)
+            self.test_df_victim, self.test_df_adv = s_split(self.test_df)
 
     def _get_prop_label_lambda(self, filter_prop):
         if filter_prop == "sex":
