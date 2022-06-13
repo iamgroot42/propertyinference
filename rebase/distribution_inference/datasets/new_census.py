@@ -6,7 +6,6 @@ import numpy as np
 import os
 import torch as ch
 import torch.nn as nn
-
 from distribution_inference.config import TrainConfig, DatasetConfig
 from distribution_inference.models.core import MLPTwoLayer
 import distribution_inference.datasets.base as base
@@ -15,22 +14,34 @@ from distribution_inference.training.utils import load_model
 
 
 class DatasetInformation(base.DatasetInformation):
-    def __init__(self):
+    def __init__(self, puma: bool = False, epoch_wise: bool = False):
+        self.puma = puma #Determine if splitting by PUMA ID or not
+        dpath = "census_new/census_2019_1year"
+        puma_datapath = "/p/adversarialml/as9rw/pumas_dataset/dataset/census"
+        if(puma):
+            dpath = puma_datapath
+
         ratios = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+
         super().__init__(name="New Census",
-                         data_path="census_new/census_2019_1year",
+                         data_path= dpath,
                          models_path="models_new_census/60_40",
                          properties=["sex", "race"],
                          values={"sex": ratios, "race": ratios},
                          property_focus={"sex": 'female', "race": 'white'})
 
-    def get_model(self, cpu: bool = False) -> nn.Module:
+
+    def get_model(self, cpu: bool = False, full_model: bool = False) -> nn.Module:
+        if full_model:
+            raise NotImplementedError("Only one model arch for this dataset")
         model = MLPTwoLayer(n_inp=105)
         if not cpu:
             model = model.cuda()
         return model
 
-    def get_model_for_dp(self, cpu: bool = False) -> nn.Module:
+    def get_model_for_dp(self, cpu: bool = False, full_model: bool = False) -> nn.Module:
+        if full_model:
+            raise NotImplementedError("Only one model arch for this dataset")
         model = MLPTwoLayer(n_inp=105)
         if not cpu:
             model = model.cuda()
@@ -64,7 +75,7 @@ class DatasetInformation(base.DatasetInformation):
         pickle.dump(train, open('./train.p', "wb"))
         pickle.dump(test, open('./test.p', "wb"))
 
-        dt = _CensusIncome()
+        dt = _CensusIncome(self.puma) #pass puma argument
 
         def fe(x):
             return x['sex'] == 1
@@ -84,13 +95,14 @@ class DatasetInformation(base.DatasetInformation):
 
 
 class _CensusIncome:
-    def __init__(self, drop_senstive_cols=False):
+    def __init__(self, puma, drop_senstive_cols=False):
+        self.puma = puma
         self.drop_senstive_cols = drop_senstive_cols
         self.columns = [
             "age", "workClass", "education-attainment",
             "marital-status", "race", "sex", "cognitive-difficulty",
             "ambulatory-difficulty", "hearing-difficulty", "vision-difficulty",
-            "work-hour", "world-area-of-birth", "state-code", "income"
+            "work-hour", "world-area-of-birth", "state-code","PUMA", "income"
         ]
         self.load_data(test_ratio=0.4)
 
@@ -110,21 +122,25 @@ class _CensusIncome:
     def get_data(self, split, prop_ratio, filter_prop,
                  custom_limit=None, scale: float = 1.0):
 
+        lambda_fn = self._get_prop_label_lambda(filter_prop)
+
         def prepare_one_set(TRAIN_DF, TEST_DF):
             # Apply filter to data
             TRAIN_DF = self.get_filter(TRAIN_DF, filter_prop,
                                        split, prop_ratio, is_test=0,
                                        custom_limit=custom_limit,
                                        scale=scale)
+            train_prop_labels = 1 * (lambda_fn(TRAIN_DF).to_numpy())
             TEST_DF = self.get_filter(TEST_DF, filter_prop,
                                       split, prop_ratio, is_test=1,
                                       custom_limit=custom_limit,
                                       scale=scale)
+            test_prop_labels = 1 * (lambda_fn(TEST_DF).to_numpy())
 
             (x_tr, y_tr, cols), (x_te, y_te, cols) = self.get_x_y(
                 TRAIN_DF), self.get_x_y(TEST_DF)
 
-            return (x_tr, y_tr), (x_te, y_te), cols
+            return (x_tr, y_tr, train_prop_labels), (x_te, y_te, test_prop_labels), cols
 
         if split == "all":
             return prepare_one_set(self.train_df, self.test_df)
@@ -168,8 +184,23 @@ class _CensusIncome:
                                          == 1], df[df['is_train'] == 0]
         self.train_df = self.train_df.drop(columns=['is_train'], axis=1)
         self.test_df = self.test_df.drop(columns=['is_train'], axis=1)
+        #######################################################################  
+        def split_puma_percentile(res, ratio): #Assign all PUMAs lower than the quantile of its state to the adversary and the rest to the victim
+            res = res.sort_values(['ST','PUMA'])
+            st = res['ST'].drop_duplicates()
+            adv_df = pd.DataFrame()
+            vict_df = pd.DataFrame()
+            for index, state in st.items():
+                print(state)
+                state_df = res.loc[(res['ST'] == state)]
+                #state_df = state_df.to_frame()
+                quant = state_df['PUMA'].quantile(ratio)
+                #print(isinstance(state_df, pd.DataFrame))
+                adv_df = pd.concat([adv_df, state_df.loc[(state_df['PUMA'] < quant)]])
+                vict_df = pd.concat([vict_df, state_df.loc[(state_df['PUMA'] >= quant)]])
+            return adv_df, vict_df #Returns dataframes for adversary and victim splits
 
-        def s_split(this_df, rs=random_state):
+        def s_split(this_df, rs=random_state): #Split for other properties
             sss = StratifiedShuffleSplit(n_splits=1,
                                          test_size=test_ratio,
                                          random_state=rs)
@@ -181,19 +212,32 @@ class _CensusIncome:
             split_1, split_2 = next(splitter)
             return this_df.iloc[split_1], this_df.iloc[split_2]
 
-        # Create train/test splits for victim/adv
-        self.train_df_victim, self.train_df_adv = s_split(self.train_df)
-        self.test_df_victim, self.test_df_adv = s_split(self.test_df)
+        if(self.puma): #Split for PUMAs
+            # Create train/test splits for victim/adv such that adversary and victim have different PUMAs
+            # This is done by assigning all PUMA IDs lower than the quantile of its state to the adversary and the rest to the victim
+            self.train_df_adv, self.train_df_victim = split_puma_percentile(self.train_df, test_ratio)
+            self.test_df_adv, self.test_df_victim = split_puma_percentile(self.test_df, test_ratio)
+        else: #Split for other properties
+            # Create train/test splits for victim/adv
+            self.train_df_victim, self.train_df_adv = s_split(self.train_df)
+            self.test_df_victim, self.test_df_adv = s_split(self.test_df)
+
+    def _get_prop_label_lambda(self, filter_prop):
+        if filter_prop == "sex":
+            def lambda_fn(x): return x['sex'] == 1
+        elif filter_prop == "race":
+            def lambda_fn(x): return x['race'] == 0
+        else:
+            raise NotImplementedError(f"Property {filter_prop} not supported")
+        return lambda_fn
 
     # Fet appropriate filter with sub-sampling according to ratio and property
     def get_filter(self, df, filter_prop, split, ratio, is_test,
                    custom_limit=None, scale: float = 1.0):
         if filter_prop == "none":
             return df
-        elif filter_prop == "sex":
-            def lambda_fn(x): return x['sex'] == 1
-        elif filter_prop == "race":
-            def lambda_fn(x): return x['race'] == 0
+        else:
+            lambda_fn = self._get_prop_label_lambda(filter_prop)
 
         # For 1-year Census data
         prop_wise_subsample_sizes = {
@@ -221,31 +265,32 @@ class _CensusIncome:
 
 
 class CensusSet(base.CustomDataset):
-    def __init__(self, data, targets, squeeze=False):
+    def __init__(self, data, targets, prop_labels, squeeze=False):
         self.data = ch.from_numpy(data).float()
         self.targets = ch.from_numpy(targets).float()
+        self.prop_labels = ch.from_numpy(prop_labels).float()
         self.squeeze = squeeze
         self.num_samples = len(self.data)
 
     def __getitem__(self, index):
         x = self.data[index]
         y = self.targets[index]
+        prop_label = self.prop_labels[index]
 
         if self.squeeze:
             y = y.squeeze()
+            prop_label = prop_label.squeeze()
 
-        # Set property label to -1
-        # Not really used, but ensures compatibility with methods
-        # from utils
-        return x, y, -1
+        return x, y, prop_label
 
 
 # Wrapper for easier access to dataset
 class CensusWrapper(base.CustomDatasetWrapper):
-    def __init__(self, data_config: DatasetConfig, skip_data: bool = False):
+    def __init__(self, data_config: DatasetConfig, skip_data: bool = False, epoch: bool = False):
         super().__init__(data_config, skip_data)
         if not skip_data:
             self.ds = _CensusIncome(drop_senstive_cols=self.drop_senstive_cols)
+        self.info_object = DatasetInformation(epoch_wise=epoch)
 
     def load_data(self, custom_limit=None):
         return self.ds.get_data(split=self.split,
@@ -255,30 +300,37 @@ class CensusWrapper(base.CustomDatasetWrapper):
                                 scale=self.scale)
 
     def get_loaders(self, batch_size: int,
-                    custom_limit=None,
                     shuffle: bool = True,
                     eval_shuffle: bool = False):
-        train_data, val_data, _ = self.load_data(custom_limit)
+        train_data, val_data, _ = self.load_data(self.cwise_samples)
         self.ds_train = CensusSet(*train_data, squeeze=self.squeeze)
         self.ds_val = CensusSet(*val_data, squeeze=self.squeeze)
         return super().get_loaders(batch_size, shuffle=shuffle,
-                                   eval_shuffle=eval_shuffle,
-                                   num_workers=1)
+                                   eval_shuffle=eval_shuffle,)
 
-    def load_model(self, path: str, on_cpu: bool = False) -> nn.Module:
-        info_object = DatasetInformation()
-        model = info_object.get_model(cpu=on_cpu)
-        return load_model(model, path)
+    def load_model(self, path: str, on_cpu: bool = False, full_model: bool = False) -> nn.Module:
+        if full_model:
+            raise NotImplementedError("Only one model arch for this dataset")
+        info_object = self.info_object
+        model = info_object.get_model(cpu=on_cpu, full_model=full_model)
+        return load_model(model, path, on_cpu=on_cpu)
 
-    def get_save_dir(self, train_config: TrainConfig) -> str:
-        info_object = DatasetInformation()
+    def get_save_dir(self, train_config: TrainConfig, full_model: bool = False) -> str:
+        info_object = self.info_object
         base_models_dir = info_object.base_models_dir
         dp_config = None
+        shuffle_defense_config = None
         if train_config.misc_config is not None:
             dp_config = train_config.misc_config.dp_config
+            shuffle_defense_config = train_config.misc_config.shuffle_defense_config
 
         if dp_config is None:
-            base_path = os.path.join(base_models_dir, "normal")
+            if shuffle_defense_config is None:
+                base_path = os.path.join(base_models_dir, "normal")
+            else:
+                base_path = os.path.join(base_models_dir, "shuffle_defense",
+                                         "%.2f" % shuffle_defense_config.desired_value,
+                                         "%.2f" % shuffle_defense_config.sample_ratio)
         else:
             base_path = os.path.join(
                 base_models_dir, "DP_%.2f" % dp_config.epsilon)
