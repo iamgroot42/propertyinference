@@ -67,6 +67,8 @@ class DatasetConfig(Serializable):
     """Mapping between property/task/split and number of samples"""
     squeeze: Optional[bool] = False
     """Whether to squeeze label data (because of extra dimension)"""
+    misc_dict: Optional[dict] = None
+    """Dictionary for enabling a different property split (ex. path to PUMA ID dataset)"""
 
 
 @dataclass

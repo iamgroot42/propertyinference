@@ -14,22 +14,18 @@ from distribution_inference.training.utils import load_model
 
 
 class DatasetInformation(base.DatasetInformation):
-    def __init__(self, puma: bool = False, epoch_wise: bool = False):
-        self.puma = puma #Determine if splitting by PUMA ID or not
-        dpath = "census_new/census_2019_1year"
-        puma_datapath = "/p/adversarialml/as9rw/pumas_dataset/dataset/census"
-        if(puma):
-            dpath = puma_datapath
-
+    def __init__(self, epoch_wise: bool = False):
         ratios = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
-
         super().__init__(name="New Census",
-                         data_path= dpath,
+                         data_path="census_new/census_2019_1year",
                          models_path="models_new_census/60_40",
                          properties=["sex", "race"],
                          values={"sex": ratios, "race": ratios},
-                         property_focus={"sex": 'female', "race": 'white'})
-
+                         property_focus={"sex": 'female', "race": 'white'},
+                         epoch_wise=epoch_wise)
+        self.base_dir = '/p/adversarialml/as9rw/datasets/'
+        self.puma_dir = ''
+        self.puma = False
 
     def get_model(self, cpu: bool = False, full_model: bool = False) -> nn.Module:
         if full_model:
@@ -62,6 +58,8 @@ class DatasetInformation(base.DatasetInformation):
                 (condition(df)).to_numpy()))[0]
             return len(qualify), len(notqualify)
 
+        if(self.puma):
+            self.base_data_dir = self.base_dir + self.puma_dir
         x = pickle.load(
             open(os.path.join(self.base_data_dir, 'census_features.p'), 'rb'))
         y = pickle.load(
@@ -75,7 +73,7 @@ class DatasetInformation(base.DatasetInformation):
         pickle.dump(train, open('./train.p', "wb"))
         pickle.dump(test, open('./test.p', "wb"))
 
-        dt = _CensusIncome(self.puma) #pass puma argument
+        dt = _CensusIncome()
 
         def fe(x):
             return x['sex'] == 1
@@ -95,16 +93,18 @@ class DatasetInformation(base.DatasetInformation):
 
 
 class _CensusIncome:
-    def __init__(self, puma, drop_senstive_cols=False):
-        self.puma = puma
+    def __init__(self, drop_senstive_cols=False):
+        self.puma = False
         self.drop_senstive_cols = drop_senstive_cols
         self.columns = [
             "age", "workClass", "education-attainment",
             "marital-status", "race", "sex", "cognitive-difficulty",
             "ambulatory-difficulty", "hearing-difficulty", "vision-difficulty",
-            "work-hour", "world-area-of-birth", "state-code","PUMA", "income"
+            "work-hour", "world-area-of-birth", "state-code", "income"
         ]
-        self.load_data(test_ratio=0.4)
+        self.base_dir = '/p/adversarialml/as9rw/datasets/'
+        self.puma_dir = ''
+        #self.load_data(test_ratio=0.4) Moved to wrapper call to account for setting the puma variable
 
     # Return data with desired property ratios
     def get_x_y(self, P):
@@ -120,7 +120,7 @@ class _CensusIncome:
         return (X.astype(float), np.expand_dims(Y, 1), cols)
 
     def get_data(self, split, prop_ratio, filter_prop,
-                 custom_limit=None, scale: float = 1.0):
+                 custom_limit=None, scale: float = 1.0,label_noise:float=0):
 
         lambda_fn = self._get_prop_label_lambda(filter_prop)
 
@@ -139,9 +139,17 @@ class _CensusIncome:
 
             (x_tr, y_tr, cols), (x_te, y_te, cols) = self.get_x_y(
                 TRAIN_DF), self.get_x_y(TEST_DF)
+            if label_noise:
+                #shape of y: (length,1)
+                
+                # print(y_tr)
+                idx = np.random.choice(len(y_tr),int (label_noise*len(y_tr)),replace=False)
+                #print(y_tr[idx])
+                y_tr[idx,0] = 1- y_tr[idx,0]
+                #print(y_tr[idx])
+            return (x_tr, y_tr,train_prop_labels), (x_te, y_te,test_prop_labels), cols
 
-            return (x_tr, y_tr, train_prop_labels), (x_te, y_te, test_prop_labels), cols
-
+           
         if split == "all":
             return prepare_one_set(self.train_df, self.test_df)
         if split == "victim":
@@ -161,10 +169,16 @@ class _CensusIncome:
         for colname in colnames:
             df = oneHotCatVars(df, colname)
         return df
+    
+
 
     # Create adv/victim splits
     def load_data(self, test_ratio, random_state: int = 42):
         info_object = DatasetInformation()
+        if(self.puma):
+            info_object.puma = True
+            info_object.puma_dir = self.puma_dir
+            info_object.base_data_dir = info_object.base_dir + info_object.puma_dir
         # Load train, test data
         train_data = pickle.load(
             open(os.path.join(info_object.base_data_dir, "data", 'train.p'), 'rb'))
@@ -184,7 +198,6 @@ class _CensusIncome:
                                          == 1], df[df['is_train'] == 0]
         self.train_df = self.train_df.drop(columns=['is_train'], axis=1)
         self.test_df = self.test_df.drop(columns=['is_train'], axis=1)
-        #######################################################################  
         def split_puma_percentile(res, ratio): #Assign all PUMAs lower than the quantile of its state to the adversary and the rest to the victim
             res = res.sort_values(['ST','PUMA'])
             st = res['ST'].drop_duplicates()
@@ -199,7 +212,7 @@ class _CensusIncome:
                 adv_df = pd.concat([adv_df, state_df.loc[(state_df['PUMA'] < quant)]])
                 vict_df = pd.concat([vict_df, state_df.loc[(state_df['PUMA'] >= quant)]])
             return adv_df, vict_df #Returns dataframes for adversary and victim splits
-
+#################################################################################################
         def s_split(this_df, rs=random_state): #Split for other properties
             sss = StratifiedShuffleSplit(n_splits=1,
                                          test_size=test_ratio,
@@ -221,6 +234,7 @@ class _CensusIncome:
             # Create train/test splits for victim/adv
             self.train_df_victim, self.train_df_adv = s_split(self.train_df)
             self.test_df_victim, self.test_df_adv = s_split(self.test_df)
+
 
     def _get_prop_label_lambda(self, filter_prop):
         if filter_prop == "sex":
@@ -286,18 +300,28 @@ class CensusSet(base.CustomDataset):
 
 # Wrapper for easier access to dataset
 class CensusWrapper(base.CustomDatasetWrapper):
-    def __init__(self, data_config: DatasetConfig, skip_data: bool = False, epoch: bool = False):
-        super().__init__(data_config, skip_data)
+    def __init__(self, data_config: DatasetConfig, skip_data: bool = False,epoch:bool=False,label_noise:float=0):
+        super().__init__(data_config, skip_data,label_noise)\
+
+        self.info_object = DatasetInformation(epoch_wise=epoch)
         if not skip_data:
             self.ds = _CensusIncome(drop_senstive_cols=self.drop_senstive_cols)
-        self.info_object = DatasetInformation(epoch_wise=epoch)
+            if(data_config.misc_dict and data_config.misc_dict['puma']): #Set puma variable and datapath
+                self.ds.puma = True
+                self.ds.puma_dir = data_config.misc_dict['puma']
+                self.info_object.puma = True 
+                self.info_object.puma_dir = data_config.misc_dict['puma'] #set datapath to puma dataset
 
+            self.ds.load_data(test_ratio=0.4)
+
+        
     def load_data(self, custom_limit=None):
         return self.ds.get_data(split=self.split,
                                 prop_ratio=self.ratio,
                                 filter_prop=self.prop,
                                 custom_limit=custom_limit,
-                                scale=self.scale)
+                                scale=self.scale,
+                                label_noise = self.label_noise)
 
     def get_loaders(self, batch_size: int,
                     shuffle: bool = True,
@@ -334,7 +358,9 @@ class CensusWrapper(base.CustomDatasetWrapper):
         else:
             base_path = os.path.join(
                 base_models_dir, "DP_%.2f" % dp_config.epsilon)
-
+        if self.label_noise:
+            base_path = os.path.join(
+                base_models_dir, "label_noise:{}".format(train_config.label_noise))
         save_path = os.path.join(base_path, self.prop, self.split)
         if self.ratio is not None:
             save_path = os.path.join(save_path, str(self.ratio))
