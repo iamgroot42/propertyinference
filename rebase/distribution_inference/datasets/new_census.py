@@ -93,8 +93,8 @@ class DatasetInformation(base.DatasetInformation):
 
 
 class _CensusIncome:
-    def __init__(self, drop_senstive_cols=False):
-        self.puma = False
+    def __init__(self, drop_senstive_cols=False, puma = False):
+        self.puma = puma
         self.drop_senstive_cols = drop_senstive_cols
         self.columns = [
             "age", "workClass", "education-attainment",
@@ -104,7 +104,7 @@ class _CensusIncome:
         ]
         self.base_dir = '/p/adversarialml/as9rw/datasets/'
         self.puma_dir = ''
-        #self.load_data(test_ratio=0.4) Moved to wrapper call to account for setting the puma variable
+        self.load_data(test_ratio=0.4) 
 
     # Return data with desired property ratios
     def get_x_y(self, P):
@@ -302,17 +302,13 @@ class CensusSet(base.CustomDataset):
 class CensusWrapper(base.CustomDatasetWrapper):
     def __init__(self, data_config: DatasetConfig, skip_data: bool = False,epoch:bool=False,label_noise:float=0):
         super().__init__(data_config, skip_data,label_noise)\
-
+        
+        self.puma = False
         self.info_object = DatasetInformation(epoch_wise=epoch)
         if not skip_data:
-            self.ds = _CensusIncome(drop_senstive_cols=self.drop_senstive_cols)
             if(data_config.misc_dict and data_config.misc_dict['puma']): #Set puma variable and datapath
-                self.ds.puma = True
-                self.ds.puma_dir = data_config.misc_dict['puma']
-                self.info_object.puma = True 
-                self.info_object.puma_dir = data_config.misc_dict['puma'] #set datapath to puma dataset
-
-            self.ds.load_data(test_ratio=0.4)
+                self.puma = True
+            self.ds = _CensusIncome(drop_senstive_cols=self.drop_senstive_cols, puma = self.puma)
 
         
     def load_data(self, custom_limit=None):
