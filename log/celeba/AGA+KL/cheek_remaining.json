@@ -1,11 +1,11 @@
 {
-    "name": "agakl_Wavy",
-    "start time": "2022-08-25 15:19:47.468018",
+    "name": "cheek_remaining",
+    "start time": "2022-08-28 12:51:20.422835",
     "attack_config": {
         "train_config": {
             "data_config": {
                 "name": "celeba",
-                "prop": "Wavy_Hair",
+                "prop": "High_Cheekbones",
                 "value": 0.5,
                 "split": "adv",
                 "drop_senstive_cols": false,
@@ -38,13 +38,6 @@
             "parallel": false
         },
         "values": [
-            0.0,
-            0.1,
-            0.2,
-            0.3,
-            0.4,
-            0.6,
-            0.7,
             0.8,
             0.9,
             1.0
@@ -134,7 +127,7 @@
         "adv_processed_variant": false,
         "adv_target_epoch": null,
         "victim_target_epoch": null,
-        "wb_path": "/u/as9rw/work/fnb/experiments/log/affinity/classification/celeba/Wavy_Hair",
+        "wb_path": "/u/as9rw/work/fnb/experiments/log/affinity/classification/celeba/High_Cheekbones",
         "save_bb": false,
         "save_data": true,
         "restore_data": null,
@@ -143,43 +136,19 @@
     },
     "result": {
         "AGA+KL": {
-            "0.0": {
+            "0.8": {
                 "adv_acc": [
-                    98.0,
+                    99.5,
                     99.0,
-                    96.0
+                    99.0
                 ],
                 "victim_acc": [
-                    86.1,
-                    69.39999999999999,
-                    71.7
-                ]
-            },
-            "0.1": {
-                "adv_acc": [
-                    96.5,
-                    94.0,
-                    97.0
-                ],
-                "victim_acc": [
-                    76.3,
-                    76.7,
-                    74.3
-                ]
-            },
-            "0.2": {
-                "adv_acc": [
-                    89.5,
-                    87.0,
-                    92.5
-                ],
-                "victim_acc": [
-                    71.8,
-                    62.1,
-                    80.0
+                    97.6,
+                    72.1,
+                    79.80000000000001
                 ]
             }
         }
     },
-    "save time": "2022-08-25 18:18:26.923519"
+    "save time": "2022-08-28 15:55:04.873928"
 }

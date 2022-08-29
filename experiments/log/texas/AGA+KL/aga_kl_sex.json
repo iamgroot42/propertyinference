@@ -1,20 +1,20 @@
 {
-    "name": "agakl_Wavy",
-    "start time": "2022-08-25 15:19:47.468018",
+    "name": "aga_kl_sex",
+    "start time": "2022-08-27 09:42:31.377119",
     "attack_config": {
         "train_config": {
             "data_config": {
-                "name": "celeba",
-                "prop": "Wavy_Hair",
+                "name": "texas",
+                "prop": "sex",
                 "value": 0.5,
                 "split": "adv",
                 "drop_senstive_cols": false,
                 "scale": 1.0,
                 "augment": false,
-                "classify": "Mouth_Slightly_Open",
+                "classify": null,
                 "cwise_samples": null,
-                "squeeze": false,
-                "processed_variant": false,
+                "squeeze": true,
+                "processed_variant": true,
                 "prune": 0
             },
             "epochs": 0,
@@ -56,13 +56,13 @@
             "ratios": [
                 1.0
             ],
-            "batch_size": 512,
+            "batch_size": 1000,
             "num_adv_models": 150,
             "granularity": 0.05,
             "preload": true,
             "multi": null,
             "multi2": null,
-            "multi_class": false,
+            "multi_class": true,
             "save": false,
             "tune_final_threshold": false,
             "Start_epoch": 1,
@@ -79,7 +79,7 @@
         "white_box": {
             "attack": "affinity",
             "epochs": 120,
-            "batch_size": 500,
+            "batch_size": 1000,
             "learning_rate": 0.001,
             "weight_decay": 0.01,
             "train_sample": 750,
@@ -91,7 +91,7 @@
             "binary": true,
             "gpu": true,
             "shuffle": true,
-            "multi_class": false,
+            "multi_class": true,
             "custom_layers_fc": null,
             "start_n_fc": 0,
             "first_n_fc": null,
@@ -134,7 +134,7 @@
         "adv_processed_variant": false,
         "adv_target_epoch": null,
         "victim_target_epoch": null,
-        "wb_path": "/u/as9rw/work/fnb/experiments/log/affinity/classification/celeba/Wavy_Hair",
+        "wb_path": "/u/as9rw/work/fnb/experiments/log/affinity/classification/texas/sex",
         "save_bb": false,
         "save_data": true,
         "restore_data": null,
@@ -145,41 +145,117 @@
         "AGA+KL": {
             "0.0": {
                 "adv_acc": [
-                    98.0,
-                    99.0,
-                    96.0
+                    98.5,
+                    100.0,
+                    100.0
                 ],
                 "victim_acc": [
-                    86.1,
-                    69.39999999999999,
-                    71.7
+                    50.1,
+                    50.0,
+                    54.0
                 ]
             },
             "0.1": {
                 "adv_acc": [
-                    96.5,
-                    94.0,
-                    97.0
+                    96.0,
+                    92.0,
+                    94.5
                 ],
                 "victim_acc": [
-                    76.3,
-                    76.7,
-                    74.3
+                    52.5,
+                    51.4,
+                    50.8
                 ]
             },
             "0.2": {
                 "adv_acc": [
-                    89.5,
-                    87.0,
-                    92.5
+                    94.0,
+                    92.5,
+                    91.5
                 ],
                 "victim_acc": [
-                    71.8,
-                    62.1,
-                    80.0
+                    50.3,
+                    52.300000000000004,
+                    62.8
+                ]
+            },
+            "0.3": {
+                "adv_acc": [
+                    83.0,
+                    75.5,
+                    68.0
+                ],
+                "victim_acc": [
+                    51.5,
+                    52.300000000000004,
+                    52.6
+                ]
+            },
+            "0.4": {
+                "adv_acc": [
+                    62.5
+                ],
+                "victim_acc": [
+                    48.5
+                ]
+            },
+            "0.6": {
+                "adv_acc": [
+                    63.5
+                ],
+                "victim_acc": [
+                    52.900000000000006
+                ]
+            },
+            "0.7": {
+                "adv_acc": [
+                    84.0,
+                    87.0,
+                    84.5
+                ],
+                "victim_acc": [
+                    55.400000000000006,
+                    53.5,
+                    51.7
+                ]
+            },
+            "0.8": {
+                "adv_acc": [
+                    93.0,
+                    91.5,
+                    94.5
+                ],
+                "victim_acc": [
+                    51.800000000000004,
+                    55.800000000000004,
+                    49.8
+                ]
+            },
+            "0.9": {
+                "adv_acc": [
+                    98.0,
+                    99.0,
+                    97.5
+                ],
+                "victim_acc": [
+                    58.199999999999996,
+                    58.9,
+                    56.49999999999999
+                ]
+            },
+            "1.0": {
+                "adv_acc": [
+                    100.0,
+                    100.0,
+                    100.0
+                ],
+                "victim_acc": [
+                    50.4,
+                    67.0,
+                    92.10000000000001
                 ]
             }
         }
     },
-    "save time": "2022-08-25 18:18:26.923519"
+    "save time": "2022-08-27 16:36:12.248742"
 }
