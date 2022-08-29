@@ -16,7 +16,7 @@
     "tries": 5,
     "black_box": {
         "granularity": 0.005,
-        "num_adv_models": 50,
+        "num_adv_models": 10,
         "batch_size": 30000,
         "attack_type": [
             "KL"

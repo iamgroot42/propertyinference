@@ -29,7 +29,7 @@
     "on_cpu": true,
     "black_box": {
         "granularity": 0.005,
-        "num_adv_models": 50,
+        "num_adv_models": 25,
         "batch_size": 512,
         "attack_type": [
             "loss_and_threshold",
