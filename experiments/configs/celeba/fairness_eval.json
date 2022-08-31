@@ -1,19 +1,19 @@
 {
     "train_config": {
         "data_config": {
-            "name": "boneage",
-            "prop": "age",
-            "classify": "gender",
+            "name": "celeba",
+            "prop": "Male",
+            "classify": "Smiling",
             "split": "victim",
-            "squeeze": true,
-            "value": 0.8,
-            "cwise_samples": null
+            "value": 0.4,
+            "cwise_samples": 1e6,
+            "processed_variant": false
         },
         "epochs": 0,
         "learning_rate": 0,
         "batch_size": 0
     },
-    "prop": "age",
+    "prop": "Male",
     "value_min": 0.0,
     "value_max": 1.0,
     "num_models": 100,
