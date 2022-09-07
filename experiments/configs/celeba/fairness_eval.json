@@ -5,9 +5,16 @@
             "prop": "Male",
             "classify": "Smiling",
             "split": "victim",
-            "value": 0.4,
+            "value": 0.8,
             "cwise_samples": 1e6,
             "processed_variant": false
+        },
+        "misc_config": {
+            "shuffle_defense_config": {
+                "desired_value": 0.5,
+                "data_level": true,
+                "sample_type": "under"
+            }
         },
         "epochs": 0,
         "learning_rate": 0,
