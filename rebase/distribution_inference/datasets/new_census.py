@@ -28,7 +28,7 @@ class DatasetInformation(base.DatasetInformation):
                          epoch_wise=epoch_wise)
 
     def get_model(self, cpu: bool = False, model_arch: str = None) -> nn.Module:
-        if model_arch is None:
+        if model_arch is None or model_arch=="None":
             model_arch = self.default_model
         if model_arch == "mlp2":
             model = MLPTwoLayer(n_inp=105)
@@ -150,12 +150,10 @@ class _CensusIncome:
                 TRAIN_DF), self.get_x_y(TEST_DF)
             if label_noise:
                 #shape of y: (length,1)
-                
-                # print(y_tr)
-                idx = np.random.choice(len(y_tr),int (label_noise*len(y_tr)),replace=False)
-                #print(y_tr[idx])
-                y_tr[idx,0] = 1- y_tr[idx,0]
-                #print(y_tr[idx])
+                idx = np.random.choice(len(y_tr), int(
+                    label_noise*len(y_tr)), replace=False)
+                y_tr[idx, 0] = 1 - y_tr[idx, 0]
+
             return (x_tr, y_tr,train_prop_labels), (x_te, y_te,test_prop_labels), cols
 
            
@@ -333,12 +331,13 @@ class CensusWrapper(base.CustomDatasetWrapper):
             shuffle_defense_config = train_config.misc_config.shuffle_defense_config
 
         # Standard logic
+        if model_arch == "None":
+            model_arch = self.info_object.default_model
         if model_arch is None:
             model_arch = self.info_object.default_model
         if model_arch not in self.info_object.supported_models:
             raise ValueError(f"Model architecture {model_arch} not supported")
-        if model_arch is None:
-            model_arch = self.info_object.default_model
+        
         base_models_dir = os.path.join(base_models_dir, model_arch)
 
         if dp_config is None:
@@ -375,4 +374,5 @@ class CensusWrapper(base.CustomDatasetWrapper):
         if not os.path.isdir(save_path):
             os.makedirs(save_path)
 
+        print("Loading models from path", save_path)
         return save_path

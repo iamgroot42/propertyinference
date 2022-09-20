@@ -19,6 +19,8 @@ from distribution_inference.attacks.blackbox.perpoint_choose_dif import PerPoint
 from distribution_inference.attacks.blackbox.KL import KLAttack
 from distribution_inference.attacks.blackbox.generative import GenerativeAttack
 from distribution_inference.attacks.blackbox.binary_perpoint import BinaryPerPointThresholdAttack
+from distribution_inference.attacks.blackbox.KL_regression import KLRegression
+from distribution_inference.attacks.blackbox.label_KL import label_only_KLAttack
 
 ATTACK_MAPPING = {
     "threshold_perpoint": PerPointThresholdAttack,
@@ -31,7 +33,9 @@ ATTACK_MAPPING = {
     "perpoint_choose_dif": PerPointChooseDifAttack,
     "KL": KLAttack,
     "generative":GenerativeAttack,
-    "binary_perpoint": BinaryPerPointThresholdAttack
+    "binary_perpoint": BinaryPerPointThresholdAttack,
+    "KL_regression": KLRegression,
+    "label_KL": label_only_KLAttack
 }
 
 
@@ -242,7 +246,10 @@ def _get_preds_for_vic_and_adv(
 
     # Sklearn models do not support logits- take care of that
     use_prob_adv = models_adv[0].is_sklearn_model
-    use_prob_vic = models_vic[0].is_sklearn_model
+    if epochwise_version:
+        use_prob_vic = models_vic[0][0].is_sklearn_model
+    else:
+        use_prob_vic = models_vic[0].is_sklearn_model
     not_using_logits = use_prob_adv or use_prob_vic
 
     if type(loader) == tuple:
@@ -267,7 +274,7 @@ def _get_preds_for_vic_and_adv(
     # Get predictions for victim models and data
     if epochwise_version:
         # Track predictions for each epoch
-        preds_vic = [[] for _ in range(len(models_vic[0]))]
+        preds_vic = []
         for models_inside_vic in tqdm(models_vic):
             preds_vic_inside, ground_truth = get_preds(
                 loader_vic, models_inside_vic, preload=preload,
@@ -277,8 +284,7 @@ def _get_preds_for_vic_and_adv(
 
             # In epoch-wise mode, we need prediction results
             # across epochs, not models
-            for i, p in enumerate(preds_vic_inside):
-                preds_vic[i].append(p)
+            preds_vic.append(preds_vic_inside)
     else:
         preds_vic, ground_truth = get_preds(
             loader_vic, models_vic, preload=preload,
@@ -330,8 +336,12 @@ def get_vic_adv_preds_on_distr(
 
     # Check if models are graph-related
     are_graph_models = False
-    if models_vic[0][0].is_graph_model:
-        are_graph_models = True
+    if epochwise_version:
+        if models_vic[0][0][0].is_graph_model:
+            are_graph_models = True
+    else:
+        if models_vic[0][0].is_graph_model:
+            are_graph_models = True
 
     if are_graph_models:
         # No concept of 'processed'

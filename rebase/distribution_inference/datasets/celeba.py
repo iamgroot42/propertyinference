@@ -47,7 +47,7 @@ class DatasetInformation(base.DatasetInformation):
     def get_model(self, parallel: bool = False, fake_relu: bool = False,
                   latent_focus=None, cpu: bool = False,
                   model_arch: str = None) -> nn.Module:
-        if model_arch is None:
+        if model_arch is None or model_arch=="None":
             model_arch = self.default_model
 
         if model_arch == "inception":
@@ -321,7 +321,6 @@ class CelebACustomBinary(base.CustomDataset):
     def mask_data_selection(self, mask):
         self.mask = mask
 
-
     def __getitem__(self, idx):
         should_augment = False
         if self.process_fn is not None:
@@ -537,6 +536,8 @@ class CelebaWrapper(base.CustomDatasetWrapper):
                                                "%.2f" % shuffle_defense_config.desired_value)
 
         # Standard logic
+        if model_arch == "None":
+            model_arch = self.info_object.default_model
         if model_arch is None:
             model_arch = self.info_object.default_model
         if model_arch not in self.info_object.supported_models:
