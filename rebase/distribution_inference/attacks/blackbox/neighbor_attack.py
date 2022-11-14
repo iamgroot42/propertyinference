@@ -8,19 +8,15 @@ from distribution_inference.attacks.blackbox.core import Attack
 import gc
 class NeighborAttack(Attack):
     
-    def attack(self,vic_models:Tuple[List,List],loaders):
-        l2_v0_on0 = get_l2(vic_models[0],loaders[0],self.config.multi_class,
+    def attack(self,vic_models:List,loaders, gt):
+        #gt=0, alpha < 0.5 else > 0.5
+        l2_v_on0 = get_l2(vic_models,loaders[0],self.config.multi_class,
         None,self.config.merlin_neighbors,self.config.merlin_mean,self.config.merlin_std)
-        l2_v1_on0 = get_l2(vic_models[1],loaders[0],self.config.multi_class,
+        l2_v_on1 = get_l2(vic_models,loaders[1],self.config.multi_class,
         None,self.config.merlin_neighbors,self.config.merlin_mean,self.config.merlin_std)
-        l2_v0_on1 = get_l2(vic_models[0],loaders[1],self.config.multi_class,
-        None,self.config.merlin_neighbors,self.config.merlin_mean,self.config.merlin_std)
-        l2_v1_on1 = get_l2(vic_models[1],loaders[1],self.config.multi_class,
-        None,self.config.merlin_neighbors,self.config.merlin_mean,self.config.merlin_std)
-        v0 = np.mean(l2_v0_on0<=l2_v0_on1,axis=1) 
-        v1 = np.mean(l2_v1_on1<=l2_v1_on0,axis=1) 
-        acc = (np.mean(v0>=0.5)+np.mean(v1>=0.5))/2
-        return ((acc,np.concatenate((v0,v1),axis=0)),None,None)
+        res = np.mean(l2_v_on0>l2_v_on1,axis=1) >= 0.5
+        acc = np.mean(res==gt)
+        return ((acc,res),None,None)
 def get_l2(models,loader, verbose: bool = True,
                  multi_class: bool = False,
                  latent: int = None,

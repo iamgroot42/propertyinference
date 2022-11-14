@@ -9,7 +9,7 @@ from distribution_inference.attacks.utils import get_dfs_for_victim_and_adv, get
 from distribution_inference.config import DatasetConfig, AttackConfig, BlackBoxAttackConfig, TrainConfig
 from distribution_inference.utils import flash_utils
 from distribution_inference.logging.core import AttackResult
-
+from dataclasses import replace
 
 if __name__ == "__main__":
     parser = ArgumentParser(add_help=False)
@@ -61,33 +61,22 @@ if __name__ == "__main__":
     ds_info = get_dataset_information(data_config.name)()
 
     # Create new DS object for both and victim
-    data_config_adv_1, data_config_vic_1 = get_dfs_for_victim_and_adv(
+    data_config_adv, data_config_vic_1 = get_dfs_for_victim_and_adv(
         data_config)
     
-    ds_vic_1 = ds_wrapper_class(
-        data_config_vic_1,
-        skip_data=True,
-        label_noise=train_config.label_noise,
-        epoch=attack_config.train_config.save_every_epoch)
+    data_config_adv_1 = replace(data_config_adv,value = 0.0) 
+    data_config_adv_2 = replace(data_config_adv,value = 1.0) 
     ds_adv_1 = ds_wrapper_class(data_config_adv_1)
+    ds_adv_2 = ds_wrapper_class(data_config_adv_2)
     train_adv_config = get_train_config_for_adv(train_config, attack_config)
 
     def single_evaluation(models_1_path=None, models_2_paths=None):
         # Load victim models for first value
-        models_vic_1 = ds_vic_1.get_models(
-            train_config,
-            n_models=attack_config.num_victim_models,
-            on_cpu=attack_config.on_cpu,
-            shuffle=False,
-            epochwise_version=attack_config.train_config.save_every_epoch,
-            model_arch=attack_config.victim_model_arch,
-            custom_models_path=models_1_path)
-        if type(models_vic_1) == tuple:
-                models_vic_1 = models_vic_1[0]
+       
         loader0 ,_ = ds_adv_1.get_loaders(batch_size=bb_attack_config.batch_size)
         # For each value (of property) asked to experiment with
         for prop_value in attack_config.values:
-            data_config_adv_2, data_config_vic_2 = get_dfs_for_victim_and_adv(
+            _, data_config_vic_2 = get_dfs_for_victim_and_adv(
                 data_config, prop_value=prop_value)
 
             # Create new DS object for both and victim (for other ratio)
@@ -95,7 +84,7 @@ if __name__ == "__main__":
                 data_config_vic_2, skip_data=True,
                 label_noise=train_config.label_noise,
                 epoch=attack_config.train_config.save_every_epoch)
-            ds_adv_2 = ds_wrapper_class(data_config_adv_2)
+            
             loader1 ,_ = ds_adv_2.get_loaders(batch_size=bb_attack_config.batch_size)
             # Load victim models for other value
             models_vic_2 = ds_vic_2.get_models(
@@ -116,7 +105,7 @@ if __name__ == "__main__":
                 
                 # Launch attack
                 result = attacker_obj.attack(
-                   (models_vic_1,models_vic_2),
+                   models_vic_2,
                    (loader0,loader1))
 
                 logger.add_results("Neighboring", prop_value,
