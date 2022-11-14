@@ -73,7 +73,7 @@ if __name__ == "__main__":
     def single_evaluation(models_1_path=None, models_2_paths=None):
         # Load victim models for first value
        
-        loader0 ,_ = ds_adv_1.get_loaders(batch_size=bb_attack_config.batch_size)
+        
         # For each value (of property) asked to experiment with
         for prop_value in attack_config.values:
             _, data_config_vic_2 = get_dfs_for_victim_and_adv(
@@ -85,7 +85,7 @@ if __name__ == "__main__":
                 label_noise=train_config.label_noise,
                 epoch=attack_config.train_config.save_every_epoch)
             
-            loader1 ,_ = ds_adv_2.get_loaders(batch_size=bb_attack_config.batch_size)
+            
             # Load victim models for other value
             models_vic_2 = ds_vic_2.get_models(
                 train_config,
@@ -102,11 +102,12 @@ if __name__ == "__main__":
                 print("{}: trial {}".format(prop_value, t))
                 # Create attacker object
                 attacker_obj = NeighborAttack(bb_attack_config)
-                
+                loader0 ,_ = ds_adv_1.get_loaders(batch_size=bb_attack_config.batch_size)
+                loader1 ,_ = ds_adv_2.get_loaders(batch_size=bb_attack_config.batch_size)
                 # Launch attack
                 result = attacker_obj.attack(
                    models_vic_2,
-                   (loader0,loader1))
+                   (loader0,loader1), gt = 0 if prop_value<0.5 else 1)
 
                 logger.add_results("Neighboring", prop_value,
                                     result[0][0], result[1][0])
