@@ -1,3 +1,4 @@
+import torch
 import torch as ch
 import torch.nn as nn
 import numpy as np
@@ -16,6 +17,8 @@ from dgl.nn.pytorch import GraphConv
 
 from distribution_inference.models.utils import BasicWrapper, FakeReluWrapper
 
+import CyConv2d_cuda
+
 
 class BaseModel(nn.Module):
     def __init__(self,
@@ -28,7 +31,7 @@ class BaseModel(nn.Module):
         self.transpose_features = transpose_features
         self.is_sklearn_model = is_sklearn_model
         self.is_graph_model = is_graph_model
-    
+
     def forward(self, x: Union[np.ndarray, ch.Tensor]) -> Union[np.ndarray, ch.Tensor]:
         converted = False
         # Convert from tensor to numpy
@@ -104,10 +107,10 @@ class LRClassifier(BaseModel):
 
 class KNeighborsClassifier(BaseModel):
     def __init__(self,
-                n_neighbors: int = 5,
-                leaf_size: int=30,
-                p :int=2,
-                n_jobs: int = -1):
+                 n_neighbors: int = 5,
+                 leaf_size: int = 30,
+                 p: int = 2,
+                 n_jobs: int = -1):
         super().__init__(is_sklearn_model=True)
         self.model = KN(
             n_neighbors=n_neighbors,
@@ -118,41 +121,43 @@ class KNeighborsClassifier(BaseModel):
 
 class GaussianProcessClassifier(BaseModel):
     def __init__(self,
-                n_restarts_optimizer: int = 0,
-                max_iter_predict: int = 100,
-                n_jobs:int = -1):
+                 n_restarts_optimizer: int = 0,
+                 max_iter_predict: int = 100,
+                 n_jobs: int = -1):
         super().__init__(is_sklearn_model=True)
         self.model = GPC(
             n_restarts_optimizer=n_restarts_optimizer,
             max_iter_predict=max_iter_predict,
             n_jobs=n_jobs)
 
+
 class KNeighborsClassifier(BaseModel):
     def __init__(self,
-                n_neighbors: int = 5,
-                leaf_size:int=30,
-                p:int=2,
-                n_jobs:int = -1
-                ):
+                 n_neighbors: int = 5,
+                 leaf_size: int = 30,
+                 p: int = 2,
+                 n_jobs: int = -1
+                 ):
         super().__init__(is_sklearn_model=True)
-        self.model = KN(n_neighbors=n_neighbors,leaf_size=leaf_size,p=p,n_jobs=n_jobs)
+        self.model = KN(n_neighbors=n_neighbors,
+                        leaf_size=leaf_size, p=p, n_jobs=n_jobs)
 
 
 class GaussianProcessClassifier(BaseModel):
     def __init__(self,
-                n_restarts_optimizer: int = 0,
-                max_iter_predict:int=100,
-                n_jobs:int = -1
-                ):
+                 n_restarts_optimizer: int = 0,
+                 max_iter_predict: int = 100,
+                 n_jobs: int = -1
+                 ):
         super().__init__(is_sklearn_model=True)
         self.model = GPC(n_restarts_optimizer=n_restarts_optimizer,
-        max_iter_predict=max_iter_predict,n_jobs=n_jobs)
+                         max_iter_predict=max_iter_predict, n_jobs=n_jobs)
 
 
 class MultinomialNB(BaseModel):
     def __init__(self,
-                alpha:float = 1.0
-                ):
+                 alpha: float = 1.0
+                 ):
         super().__init__(is_sklearn_model=True)
         self.model = MNB(alpha=alpha)
 
@@ -163,7 +168,8 @@ class InceptionModel(BaseModel):
                  fake_relu: bool = False,
                  latent_focus: int = None) -> None:
         super().__init__(is_conv=True)
-        self.model = densenet121(num_classes=num_classes) #, aux_logits=False)
+        # , aux_logits=False)
+        self.model = densenet121(num_classes=num_classes)
 
     def forward(self, x: ch.Tensor, latent: int = None) -> ch.Tensor:
         return self.model(x)
@@ -308,11 +314,11 @@ class MLPTwoLayer(BaseModel):
                 get_all: bool = False,
                 layers_to_target_conv: List[int] = None,
                 layers_to_target_fc: List[int] = None,
-                latent:int=None):
+                latent: int = None):
 
         # Override list of layers if given
         valid_fc = layers_to_target_fc if layers_to_target_fc else self.valid_for_all_fc
-        latent_mapping = {0: 1, 1:3}
+        latent_mapping = {0: 1, 1: 3}
         all_latents = []
         for i, layer in enumerate(self.layers):
             x = layer(x)
@@ -353,11 +359,11 @@ class MLPThreeLayer(BaseModel):
                 get_all: bool = False,
                 layers_to_target_conv: List[int] = None,
                 layers_to_target_fc: List[int] = None,
-                latent:int=None):
+                latent: int = None):
 
         # Override list of layers if given
         valid_fc = layers_to_target_fc if layers_to_target_fc else self.valid_for_all_fc
-        latent_mapping = {0: 1, 1:3, 2:5}
+        latent_mapping = {0: 1, 1: 3, 2: 5}
         all_latents = []
         for i, layer in enumerate(self.layers):
             x = layer(x)
@@ -413,7 +419,7 @@ class BoneModel(BaseModel):
         # Override list of layers if given
         valid_fc = layers_to_target_fc if layers_to_target_fc else self.valid_for_all_fc
 
-        latent_mapping = {0: 1, 1:3} # layer wanted: actual layer in model
+        latent_mapping = {0: 1, 1: 3}  # layer wanted: actual layer in model
 
         all_latents = []
         for i, layer in enumerate(self.layers):
@@ -490,7 +496,7 @@ class MLPFiveLayer(BaseModel):
             nn.ReLU(),
             nn.Linear(dims[3], num_classes),
         )
-        self.valid_for_all_fc = [1, 3, 5,7,9]
+        self.valid_for_all_fc = [1, 3, 5, 7, 9]
 
     def forward(self, x,
                 detach_before_return: bool = False,
@@ -656,6 +662,121 @@ class AnyLayerMLP(BaseModel):
             self.layers.append(nn.ReLU())
         self.layers.append(nn.Linear(desired_dims[-1], n_classes))
         self.model = nn.Sequential(*self.layers)
-    
+
     def forward(self, x: ch.Tensor) -> ch.Tensor:
         return self.model(x)
+
+# CyCNN
+
+
+def _weights_init(m):
+    classname = m.__class__.__name__
+    if isinstance(m, nn.Linear) or isinstance(m, nn.Conv2d):
+        nn.init.kaiming_normal_(m.weight)
+
+
+class LambdaLayer(nn.Module):
+    def __init__(self, lambd):
+        super(LambdaLayer, self).__init__()
+        self.lambd = lambd
+
+    def forward(self, x):
+        return self.lambd(x)
+
+
+class CyConv2dFunction(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, input, weight, workspace, stride=1, padding=0, dilation=1):
+        ctx.input = input
+        ctx.weight = weight
+        ctx.workspace = workspace
+        ctx.stride = stride
+        ctx.padding = padding
+        ctx.dilation = dilation
+
+        output = CyConv2d_cuda.forward(
+            input, weight, workspace, stride, padding, dilation)
+
+        return output
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        grad_input, grad_weight = CyConv2d_cuda.backward(
+            ctx.input, grad_output.contiguous(), ctx.weight, ctx.workspace,
+            ctx.stride, ctx.padding, ctx.dilation)
+
+        return grad_input, grad_weight, None, None, None, None
+
+
+class CyConv2d(nn.Module):
+
+    """Workspace for Cy-Winograd algorithm"""
+    workspace = torch.zeros(1024 * 1024 * 1024 * 1,
+                            dtype=torch.float32).to(torch.device('cuda'))
+
+    def __init__(self, in_channels, out_channels, kernel_size,
+                 stride=1, padding=0, dilation=1):
+        super(CyConv2d, self).__init__()
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.kernel_size = kernel_size
+        self.stride = stride
+        self.padding = padding
+        self.dilation = dilation
+
+        self.weight = nn.Parameter(
+            torch.Tensor(out_channels, in_channels, kernel_size, kernel_size))
+        nn.init.xavier_uniform_(self.weight)
+
+    def forward(self, input):
+        output = CyConv2dFunction.apply(input,
+                                        self.weight,
+                                        CyConv2d.workspace,
+                                        self.stride,
+                                        self.padding,
+                                        self.dilation)
+        return output
+
+    def extra_repr(self):
+        return 'C={}, K={}, RS={}x{} str={}, pad={}, dil={}'.format(
+            self.in_channels, self.out_channels,
+            self.kernel_size, self.kernel_size,
+            self.stride, self.padding, self.dilation)
+
+
+class CyResNet(BaseModel):
+    def __init__(self, block, num_blocks, dataset='mnist', num_classes=10):
+        super(CyResNet, self).__init__(is_conv=False)
+        self.in_planes = 16
+
+        in_channels = 1 if dataset == 'mnist' else 3
+
+        """CyConv2d instead of nn.Conv2d"""
+        self.conv1 = CyConv2d(
+            in_channels, 16, kernel_size=3, stride=1, padding=1)
+        self.bn1 = nn.BatchNorm2d(16)
+        self.layer1 = self._make_layer(block, 16, num_blocks[0], stride=1)
+        self.layer2 = self._make_layer(block, 32, num_blocks[1], stride=2)
+        self.layer3 = self._make_layer(block, 64, num_blocks[2], stride=2)
+        self.linear = nn.Linear(64, num_classes)
+
+        self.apply(_weights_init)
+
+    def _make_layer(self, block, planes, num_blocks, stride):
+        strides = [stride] + [1]*(num_blocks-1)
+        layers = []
+        for stride in strides:
+            layers.append(block(self.in_planes, planes, stride))
+            self.in_planes = planes * block.expansion
+
+        return nn.Sequential(*layers)
+
+    def forward(self, x):
+        out = F.relu(self.bn1(self.conv1(x)))
+        out = self.layer1(out)
+        out = self.layer2(out)
+        out = self.layer3(out)
+        out = F.avg_pool2d(out, out.size()[3])
+        out = out.view(out.size(0), -1)
+        out = self.linear(out)
+        return out
