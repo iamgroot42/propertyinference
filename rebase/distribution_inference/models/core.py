@@ -175,7 +175,7 @@ class InceptionModel(BaseModel):
         return self.model(x)
 
 
-class MyAlexNet(BaseModel):
+class MyAlexNetOG(BaseModel):
     def __init__(self,
                  num_classes: int = 1,
                  fake_relu: bool = False,
@@ -201,6 +201,128 @@ class MyAlexNet(BaseModel):
             nn.Conv2d(128, 128, kernel_size=3, padding=1),
             nn.ReLU(inplace=True),
             nn.Conv2d(128, 64, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=3, stride=2)
+        ]
+        # Don't need EACH layer (too much memory) for now,
+        # can get away with skipping most layers
+        # self.valid_for_all_conv = [2, 5, 7, 9, 12]
+        self.valid_for_all_conv = [5, 9]
+
+        clf_layers = [
+            nn.Linear(64 * 6 * 6, 64),
+            nn.ReLU(inplace=True),
+            nn.Linear(64, 32),
+            nn.ReLU(inplace=True),
+            nn.Linear(32, num_classes),
+        ]
+        self.valid_for_all_fc = [1, 3, 4]
+
+        mapping = {0: 1, 1: 4, 2: 7, 3: 9, 4: 11, 5: 1, 6: 3}
+        if self.latent_focus is not None:
+            if self.latent_focus < 5:
+                layers[mapping[self.latent_focus]] = act_fn(inplace=True)
+            else:
+                clf_layers[mapping[self.latent_focus]] = act_fn(inplace=True)
+
+        self.features = nn.Sequential(*layers)
+        self.avgpool = nn.AdaptiveAvgPool2d((6, 6))
+        self.classifier = nn.Sequential(*clf_layers)
+
+    def forward(self, x: ch.Tensor,
+                latent: int = None,
+                detach_before_return: bool = False,
+                get_all: bool = False,
+                layers_to_target_conv: List[int] = None,
+                layers_to_target_fc: List[int] = None,) -> ch.Tensor:
+
+        # Override list of layers if given
+        valid_conv = layers_to_target_conv if layers_to_target_conv else self.valid_for_all_conv
+        valid_fc = layers_to_target_fc if layers_to_target_fc else self.valid_for_all_fc
+
+        if latent is None:
+            all_latents = []
+
+            # Function to collect latents (for given layers) from given model
+            def _collect_latents(model, wanted):
+                nonlocal x
+                for i, layer in enumerate(model):
+                    x = layer(x)
+                    if get_all and i in wanted:
+                        x_flat = x.view(x.size(0), -1)
+                        if detach_before_return:
+                            all_latents.append(x_flat.detach())
+                        else:
+                            all_latents.append(x_flat)
+
+            _collect_latents(self.features, valid_conv)
+            x = self.avgpool(x)
+            x = ch.flatten(x, 1)
+            _collect_latents(self.classifier, valid_fc)
+
+            if get_all:
+                return all_latents
+            if detach_before_return:
+                return x.detach()
+            return x
+
+        if latent not in list(range(7)):
+            raise ValueError("Invald interal layer requested")
+
+        # Pick activations just before previous layers
+        # Since any intermediate functions that pool activations
+        # Introduce invariance to further layers, so should be
+        # Clubbed according to pooling
+
+        if latent < 4:
+            # Latent from Conv part of model
+            mapping = {0: 2, 1: 5, 2: 7, 3: 9}
+            for i, layer in enumerate(self.features):
+                x = layer(x)
+                if i == mapping[latent]:
+                    return x.view(x.shape[0], -1)
+
+        elif latent == 4:
+            x = self.features(x)
+            x = self.avgpool(x)
+            x = ch.flatten(x, 1)
+            return x
+        else:
+            x = self.features(x)
+            x = self.avgpool(x)
+            x = ch.flatten(x, 1)
+            for i, layer in enumerate(self.classifier):
+                x = layer(x)
+                if i == 2 * (latent - 5) + 1:
+                    return x
+
+
+class MyAlexNet(BaseModel):
+    def __init__(self,
+                 num_classes: int = 1,
+                 fake_relu: bool = False,
+                 latent_focus: int = None) -> None:
+        super().__init__(is_conv=True)
+        # expected input shape: 218,178
+        if fake_relu:
+            act_fn = BasicWrapper
+        else:
+            act_fn = nn.ReLU
+
+        self.latent_focus = latent_focus
+
+        layers = [
+            CyConv2d(3, 64, kernel_size=11, stride=4, padding=2),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=3, stride=2),
+            CyConv2d(64, 128, kernel_size=5, padding=2),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=3, stride=2),
+            CyConv2d(128, 128, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            CyConv2d(128, 128, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            CyConv2d(128, 64, kernel_size=3, padding=1),
             nn.ReLU(inplace=True),
             nn.MaxPool2d(kernel_size=3, stride=2)
         ]
