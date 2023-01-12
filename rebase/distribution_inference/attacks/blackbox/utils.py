@@ -9,7 +9,7 @@ import gc
 from distribution_inference.attacks.blackbox.per_point import PerPointThresholdAttack
 from distribution_inference.attacks.blackbox.standard import LossAndThresholdAttack
 from distribution_inference.attacks.blackbox.core import PredictionsOnOneDistribution
-from distribution_inference.datasets.base import CustomDatasetWrapper
+from distribution_inference.datasets.custom import CustomDatasetWrapper
 from distribution_inference.attacks.blackbox.epoch_loss import Epoch_LossAttack
 from distribution_inference.attacks.blackbox.epoch_threshold import Epoch_ThresholdAttack
 from distribution_inference.attacks.blackbox.epoch_perpoint import Epoch_Perpoint
@@ -22,7 +22,7 @@ from distribution_inference.attacks.blackbox.binary_perpoint import BinaryPerPoi
 from distribution_inference.attacks.blackbox.KL_regression import KLRegression
 from distribution_inference.attacks.blackbox.label_KL import label_only_KLAttack
 from distribution_inference.attacks.blackbox.zhang import ZhangAttack
-
+#from distribution_inference.attacks.blackbox.neighbor_attack import NeighborAttack
 ATTACK_MAPPING = {
     "threshold_perpoint": PerPointThresholdAttack,
     "loss_and_threshold": LossAndThresholdAttack,
@@ -37,7 +37,8 @@ ATTACK_MAPPING = {
     "binary_perpoint": BinaryPerPointThresholdAttack,
     "KL_regression": KLRegression,
     "label_KL": label_only_KLAttack,
-    "zhang": ZhangAttack
+    "zhang": ZhangAttack,
+    #"Neighboring": NeighborAttack
 }
 
 

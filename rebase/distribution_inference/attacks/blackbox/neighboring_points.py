@@ -8,7 +8,7 @@ import torch as ch
 import torch.nn as nn
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
-from distribution_inference.datasets.base import CustomDatasetWrapper
+from distribution_inference.datasets.custom import CustomDatasetWrapper
 from distribution_inference.attacks.blackbox.utils import get_preds
 
 

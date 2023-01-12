@@ -6,11 +6,12 @@ git+https://github.com/iamgroot42/facenet-pytorch
 torch
 torchvision
 torchaudio
-scikit-learn
-scipy
+scikit-learn==1.0.2
+scipy==1.8.0
 tqdm
 ogb
 pandas
 colorama
 seaborn
 jsonargparse
+dgl==0.9.0
