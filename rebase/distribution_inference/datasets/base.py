@@ -157,6 +157,7 @@ class CustomDatasetWrapper:
         self.processed_variant = data_config.processed_variant
         self.prune = data_config.prune
         self.is_graph_data = is_graph_data
+        self.adv_use_frac = data_config.adv_use_frac
 
         # Either set ds_train and ds_val here
         # Or set them inside get_loaders
