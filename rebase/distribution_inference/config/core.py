@@ -99,6 +99,8 @@ class DatasetConfig(Serializable):
     """Use processed version of data (relevant for BoneAge,CelebA)?"""
     prune: Optional[float] = 0
     """Prune graph by removing nodes? (only valid for arXiv dataset)"""
+    adv_use_frac: Optional[float] = 1.0
+    """What percentage of data should be used to train adv models (out of the quota reserved)"""
 
 
 @dataclass
@@ -227,6 +229,7 @@ class TrainConfig(Serializable):
     early_stopping: Optional[EarlyStoppingConfig] = None
     """Use early stopping?"""
 
+
 @dataclass
 class GenerativeAttackConfig(Serializable):
     steps: int
@@ -300,6 +303,13 @@ class BlackBoxAttackConfig(Serializable):
     """Type of ordering to use"""
     geo_mean:Optional[bool] = False
     regression_config: Optional[RegressionConfig] = None
+
+    merlin_mean: Optional[float] = 0.0
+    """Mean for noise in merlin-based probability estimation"""
+    merlin_std: Optional[float] = 0.3
+    """Std for noise in merlin-based probability estimation"""
+    merlin_neighbors: Optional[int] = 100
+    """Number of samples for noise in merlin-based probability estimation"""
 
 
 @dataclass

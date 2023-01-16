@@ -20,7 +20,6 @@ class DatasetInformation(base.DatasetInformation):
         super().__init__(name="New Census",
                          data_path="census_new/census_2019_1year",
                          models_path="models_new_census/60_40_nobalancing",
-                        #  models_path="models_new_census/60_40",
                          properties=["sex", "race"],
                          values={"sex": ratios, "race": ratios},
                          supported_models=["mlp2", "random_forest", "lr", "mlp3"],
@@ -130,25 +129,37 @@ class _CensusIncome:
     def get_data(self, split, prop_ratio, filter_prop,
                  custom_limit=None,
                  scale: float = 1.0,
-                 label_noise:float = 0):
+                 label_noise:float = 0,
+                 indeces = None,
+                 adv_use_frac: float = 1.0):
 
         lambda_fn = self._get_prop_label_lambda(filter_prop)
 
         def prepare_one_set(TRAIN_DF, TEST_DF):
             # Apply filter to data
-            TRAIN_DF, train_ids = self.get_filter(TRAIN_DF, filter_prop,
-                                       split, prop_ratio, is_test=0,
-                                       custom_limit=custom_limit,
-                                       scale=scale)
-            train_prop_labels = 1 * (lambda_fn(TRAIN_DF).to_numpy())
-            TEST_DF, test_ids = self.get_filter(TEST_DF, filter_prop,
-                                      split, prop_ratio, is_test=1,
-                                      custom_limit=custom_limit,
-                                      scale=scale)
-            test_prop_labels = 1 * (lambda_fn(TEST_DF).to_numpy())
+            if indeces:
+                TRAIN_DF_ = TRAIN_DF.iloc[indeces[0]].reset_index(drop=True)
+                train_ids = None
+            else:
+                TRAIN_DF_, train_ids = self.get_filter(TRAIN_DF, filter_prop,
+                                           split, prop_ratio, is_test=0,
+                                           custom_limit=custom_limit,
+                                           scale=scale,
+                                           adv_use_frac=adv_use_frac)
+            train_prop_labels = 1 * (lambda_fn(TRAIN_DF_).to_numpy())
+            if indeces:
+                TEST_DF_ = TEST_DF.iloc[indeces[1]].reset_index(drop=True)
+                test_ids = None
+            else:
+                TEST_DF_, test_ids = self.get_filter(TEST_DF, filter_prop,
+                                          split, prop_ratio, is_test=1,
+                                          custom_limit=custom_limit,
+                                          scale=scale,
+                                          adv_use_frac=adv_use_frac)
+            test_prop_labels = 1 * (lambda_fn(TEST_DF_).to_numpy())
 
             (x_tr, y_tr, cols), (x_te, y_te, cols) = self.get_x_y(
-                TRAIN_DF), self.get_x_y(TEST_DF)
+                TRAIN_DF_), self.get_x_y(TEST_DF_)
             if label_noise:
                 #shape of y: (length,1)
                 idx = np.random.choice(len(y_tr), int(
@@ -227,7 +238,8 @@ class _CensusIncome:
 
     # Fet appropriate filter with sub-sampling according to ratio and property
     def get_filter(self, df, filter_prop, split, ratio, is_test,
-                   custom_limit=None, scale: float = 1.0):
+                   custom_limit=None, scale: float = 1.0,
+                   adv_use_frac: float = 1.0):
         if filter_prop == "none":
             return df
         else:
@@ -253,6 +265,10 @@ class _CensusIncome:
             subsample_size = int(scale*subsample_size)
         else:
             subsample_size = custom_limit
+
+        if adv_use_frac < 1:
+            subsample_size = int(subsample_size*adv_use_frac)
+
         return utils.heuristic(df, lambda_fn, ratio,
                             #    subsample_size,
                                cwise_sample=None,
@@ -310,26 +326,33 @@ class CensusWrapper(base.CustomDatasetWrapper):
             self.ds = _CensusIncome(drop_senstive_cols=self.drop_senstive_cols)
         self.info_object = DatasetInformation(epoch_wise=epoch)
         
-    def load_data(self, custom_limit=None):
+    def load_data(self, custom_limit=None, indexed_data=None):
         data, splits = self.ds.get_data(split=self.split,
-                                prop_ratio=self.ratio,
-                                filter_prop=self.prop,
-                                custom_limit=custom_limit,
-                                scale=self.scale,
-                                label_noise = self.label_noise)
-        self.used_for_train = splits[0]
-        self.used_for_test = splits[1]
+                                    prop_ratio=self.ratio,
+                                    filter_prop=self.prop,
+                                    custom_limit=custom_limit,
+                                    scale=self.scale,
+                                    label_noise = self.label_noise,
+                                    indeces=indexed_data,
+                                    adv_use_frac=self.adv_use_frac)
+        self._used_for_train = splits[0]
+        self._used_for_test = splits[1]
         return data
+    
+    def get_used_indices(self):
+        train_ids_after = self.ds_train.ids
+        val_ids_after = self.ds_val.ids
+        return (self._train_ids_before, train_ids_after), (self._val_ids_before, val_ids_after)
 
     def get_loaders(self, batch_size: int,
                     shuffle: bool = True,
-                    eval_shuffle: bool = False):
-        train_data, val_data, _ = self.load_data(self.cwise_samples)
-        self.ds_train = CensusSet(*train_data, squeeze=self.squeeze, ids = self.used_for_train)
-        self.ds_val = CensusSet(*val_data, squeeze=self.squeeze, ids = self.used_for_test)
-        # Update (based on how masking was done)
-        self.used_for_train = self.ds_train.mask
-        self.used_for_test = self.ds_val.mask
+                    eval_shuffle: bool = False,
+                    indexed_data=None):
+        train_data, val_data, _ = self.load_data(self.cwise_samples, indexed_data=indexed_data)
+        self.ds_train = CensusSet(*train_data, squeeze=self.squeeze, ids = self._used_for_train)
+        self.ds_val = CensusSet(*val_data, squeeze=self.squeeze, ids = self._used_for_test)
+        self._train_ids_before = self.ds_train.ids
+        self._val_ids_before = self.ds_val.ids
         return super().get_loaders(batch_size, shuffle=shuffle,
                                    eval_shuffle=eval_shuffle,)
 
@@ -365,7 +388,7 @@ class CensusWrapper(base.CustomDatasetWrapper):
                     # simply load 'normal' model of that ratio
                     base_path = os.path.join(base_models_dir, "normal")
                 else:
-                    base_path = os.path.join(base_models_dir, "shuffle_defense",
+                    base_path = os.path.join(base_models_dir, "shuffle_defense",#"test_shuffled",
                                              "%s" % shuffle_defense_config.sample_type,
                                              "%.2f" % shuffle_defense_config.desired_value)
         else:
@@ -375,7 +398,10 @@ class CensusWrapper(base.CustomDatasetWrapper):
             base_path = os.path.join(
                 base_models_dir, "label_noise:{}".format(train_config.label_noise))
 
-        save_path = os.path.join(base_path, self.prop, self.split)
+        split_ = self.split
+        if self.adv_use_frac < 1 and self.split == "adv":
+            split_ = "adv_%.2f" % self.adv_use_frac
+        save_path = os.path.join(base_path, self.prop, split_)
 
         if self.ratio is not None:
             save_path = os.path.join(save_path, str(self.ratio))

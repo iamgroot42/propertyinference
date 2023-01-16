@@ -2,10 +2,11 @@
     "train_config": {
         "data_config": {
             "name": "new_census",
-            "prop": "race",
+            "prop": "sex",
             "split": "adv",
             "squeeze": true,
-            "value": 0.5
+            "value": 0.5,
+            "cwise_samples": 1e4
         },
         "epochs": 0,
         "learning_rate": 0,
@@ -14,7 +15,7 @@
     "tries": 5,
     "black_box": {
         "granularity": 0.05,
-        "num_adv_models": 400,
+        "num_adv_models": 50,
         "batch_size": 30000,
         "attack_type": [
             "KL"
@@ -22,7 +23,9 @@
         "ratios": [
             1.0
         ],
-        "preload": true
+        "preload": true,
+        "merlin_std": 0.05,
+        "merlin_neighbors": 100
     },
     "values": [
         0.0,

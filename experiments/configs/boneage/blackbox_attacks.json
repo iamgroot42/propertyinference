@@ -16,7 +16,7 @@
     "tries": 5,
     "black_box": {
         "granularity": 0.005,
-        "num_adv_models": 400,
+        "num_adv_models": 50,
         "batch_size": 30000,
         "attack_type": [
             "KL"
@@ -24,7 +24,9 @@
         "ratios": [
             1.0
         ],
-        "preload": true
+        "preload": true,
+        "merlin_std": 0.3,
+        "merlin_neighbors": 5
     },
     "values": [
         0.2,

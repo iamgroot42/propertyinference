@@ -157,6 +157,7 @@ class CustomDatasetWrapper:
         self.processed_variant = data_config.processed_variant
         self.prune = data_config.prune
         self.is_graph_data = is_graph_data
+        self.adv_use_frac = data_config.adv_use_frac
 
         # Either set ds_train and ds_val here
         # Or set them inside get_loaders
@@ -167,11 +168,9 @@ class CustomDatasetWrapper:
 
         # Active defenses
         self.shuffle_defense = shuffle_defense
-
-        # Keep track of which exact points were used for train/testing
-        # in the form of indices
-        self.used_for_train = None
-        self.used_for_test = None
+    
+    def get_used_indices(self):
+        raise NotImplementedError("Dataset does not implement get_used_indices")
 
     def get_loaders(self, batch_size: int,
                     shuffle: bool = True,
@@ -334,7 +333,7 @@ class CustomDatasetWrapper:
             state across iterations of being trained (sorted in epoch order)
         """
         # Get path to load models
-        if model_arch==None:
+        if model_arch==None or model_arch=="None":
             model_arch=self.info_object.default_model
         model_paths, folder_path, total_models = self._get_model_paths(
             train_config,
@@ -346,6 +345,7 @@ class CustomDatasetWrapper:
         n_failed = []
         models = []
         mp = []
+        before_ids, after_ids = [], []
         with tqdm(total=total_models, desc="Loading models") as pbar:
             if len(n_failed) >= 5:
                 raise Exception(f"Had trouble loading {len(n_failed)} models ({n_failed}), aborting")
@@ -405,11 +405,18 @@ class CustomDatasetWrapper:
                         model = self.load_model(os.path.join(
                             folder_path, mpath), on_cpu=on_cpu,
                             model_arch=model_arch)
-                    except:
+                    except Exception as e:
                         # Could not load (for whatever reason)
                         n_failed.append(mpath)
                         continue
-                    models.append(model)
+                    
+                    # Has before/after information
+                    if type(model) == tuple:
+                        models.append(model[0])
+                        before_ids.append((model[1][0][0], model[1][1][0]))
+                        after_ids.append((np.sort(model[1][0][1]), np.sort(model[1][1][1])))
+                    else:
+                        models.append(model)
                     i += 1
                     mp.append(mpath)
 
@@ -428,6 +435,9 @@ class CustomDatasetWrapper:
         if n_models is not None and len(models) != n_models:
             warnings.warn(warning_string(
                 f"\nNumber of models loaded ({len(models)}) is less than requested ({n_models})"))
+        
+        if len(before_ids) > 0:
+            return np.array(models, dtype='object'), (before_ids, after_ids)
         if get_names:
             return np.array(models, dtype='object'), mp
         else:
@@ -512,10 +522,15 @@ class CustomDatasetWrapper:
                         folder_path, mpath), on_cpu=on_cpu,
                         model_arch=model_arch)
 
+                    # Has before/after information
+                    model_part_use = model
+                    if type(model) == tuple:
+                        model_part_use = model[0]
+
                     # Extract model features
                     # Get model params, shift to GPU
                     dims, feature_vector = get_weight_layers(
-                        model, attack_config)
+                        model_part_use, attack_config)
                     feature_vectors.append(feature_vector)
                     i += 1
 
