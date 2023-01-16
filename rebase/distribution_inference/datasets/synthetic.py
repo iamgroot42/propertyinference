@@ -218,8 +218,8 @@ class SyntheticDataset:
         mean = np.random.uniform(-self.config.mean_range,
                                  self.config.mean_range, self.config.dimensionality)
         mean_copy = mean + \
-            np.random.uniform(-self.config.dist_diff_mean,
-                              self.config.dist_diff_mean, self.config.dimensionality)
+            np.random.uniform(-self.dist_diff_mean,
+                              self.dist_diff_mean, self.config.dimensionality)
         # set variance range between 1 and cov
         cov_list = np.random.uniform(1, self.config.cov, self.config.dimensionality)
 
@@ -227,7 +227,7 @@ class SyntheticDataset:
         cov = np.diagflat(cov_list)
         # not sure if can let it go negative
         cov_copy = np.diagflat(
-            cov_list + np.random.uniform(0, self.config.dist_diff_mean))
+            cov_list + np.random.uniform(0, self.dist_diff_std))
 
         candidate_d0, candidate_d1 = [], []
         # Heuristic - try 100 times, pick all < 0.3, and sample any one of them
@@ -284,7 +284,7 @@ class SyntheticDataset:
         model_p = copy.deepcopy(model)
         with ch.no_grad():
             for param in model_p.parameters():
-                param.add_(ch.randn(param.size()) * self.config.dist_diff_mean)
+                param.add_(ch.randn(param.size()) * self.dist_diff_mean)
         return model_p
 
     def get_data(self, alpha: float, split: Literal["victim", "adv"], label_noise: float = 0.0):
@@ -366,8 +366,8 @@ class SyntheticWrapper(base.CustomDatasetWrapper):
             list(set(range(x.shape[0])) - set(val_indices)))
         x_train, y_train, p_train = x[train_indices], y[train_indices], p[train_indices]
         x_val, y_val, p_val = x[val_indices], y[val_indices], p[val_indices]
-        print(ch.mean(1. * y_train))
-        print(ch.mean(1. * y_val))
+        # print(ch.mean(1. * y_train))
+        # print(ch.mean(1. * y_val))
         return (x_train, y_train, p_train), (x_val, y_val, p_val)
 
     def get_loaders(self, batch_size: int,
