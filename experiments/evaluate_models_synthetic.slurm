@@ -26,22 +26,8 @@
 #SBATCH --time=3-00:00:00
 
 # Output file paths
-#SBATCH --output=log/training_synthetic/%x-%j.out
-#SBATCH --error=log/training_synthetic/%x-%j.err
-
-RATIOS=(
-    0.0
-    0.1
-    0.2
-    0.3
-    0.4
-    0.5
-    0.6
-    0.7
-    0.8
-    0.9
-    1.0
-)
+#SBATCH --output=log/exps_synthetic/%x-%j.out
+#SBATCH --error=log/exps_synthetic/%x-%j.err
 
 # Run all ratios at once
-CUDA_VISIBLE_DEVICES=0 knocky python train_models.py --load_config configs/synthetic/train_models.json --split $SPLIT --num_models $NMODELS --prop $PROP --value "${RATIOS[SLURM_ARRAY_TASK_ID]}"
+CUDA_VISIBLE_DEVICES=0 knocky python blackbox_attacks.py --load_config configs/synthetic/bb_attacks.json --en "bb_$SLURM_ARRAY_TASK_ID" --prop $SLURM_ARRAY_TASK_ID
