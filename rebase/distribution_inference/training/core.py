@@ -167,9 +167,12 @@ def validate_epoch(val_loader, model, criterion,
             else:
                 data, labels = tuple
             if input_is_list:
+                data = polar_transform(data)
                 data = [x.cuda() for x in data]
             else:
+                data = polar_transform(data)
                 data = data.cuda()
+
             labels = labels.cuda()
             N = labels.size(0)
 
