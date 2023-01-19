@@ -130,7 +130,8 @@ class _CensusIncome:
                  custom_limit=None,
                  scale: float = 1.0,
                  label_noise:float = 0,
-                 indeces = None):
+                 indeces = None,
+                 adv_use_frac: float = 1.0):
 
         lambda_fn = self._get_prop_label_lambda(filter_prop)
 
@@ -143,7 +144,8 @@ class _CensusIncome:
                 TRAIN_DF_, train_ids = self.get_filter(TRAIN_DF, filter_prop,
                                            split, prop_ratio, is_test=0,
                                            custom_limit=custom_limit,
-                                           scale=scale)
+                                           scale=scale,
+                                           adv_use_frac=adv_use_frac)
             train_prop_labels = 1 * (lambda_fn(TRAIN_DF_).to_numpy())
             if indeces:
                 TEST_DF_ = TEST_DF.iloc[indeces[1]].reset_index(drop=True)
@@ -152,7 +154,8 @@ class _CensusIncome:
                 TEST_DF_, test_ids = self.get_filter(TEST_DF, filter_prop,
                                           split, prop_ratio, is_test=1,
                                           custom_limit=custom_limit,
-                                          scale=scale)
+                                          scale=scale,
+                                          adv_use_frac=adv_use_frac)
             test_prop_labels = 1 * (lambda_fn(TEST_DF_).to_numpy())
 
             (x_tr, y_tr, cols), (x_te, y_te, cols) = self.get_x_y(
@@ -235,7 +238,8 @@ class _CensusIncome:
 
     # Fet appropriate filter with sub-sampling according to ratio and property
     def get_filter(self, df, filter_prop, split, ratio, is_test,
-                   custom_limit=None, scale: float = 1.0):
+                   custom_limit=None, scale: float = 1.0,
+                   adv_use_frac: float = 1.0):
         if filter_prop == "none":
             return df
         else:
@@ -261,6 +265,10 @@ class _CensusIncome:
             subsample_size = int(scale*subsample_size)
         else:
             subsample_size = custom_limit
+
+        if adv_use_frac < 1:
+            subsample_size = int(subsample_size*adv_use_frac)
+
         return utils.heuristic(df, lambda_fn, ratio,
                             #    subsample_size,
                                cwise_sample=None,
@@ -325,7 +333,8 @@ class CensusWrapper(base.CustomDatasetWrapper):
                                     custom_limit=custom_limit,
                                     scale=self.scale,
                                     label_noise = self.label_noise,
-                                    indeces=indexed_data)
+                                    indeces=indexed_data,
+                                    adv_use_frac=self.adv_use_frac)
         self._used_for_train = splits[0]
         self._used_for_test = splits[1]
         return data
@@ -389,7 +398,10 @@ class CensusWrapper(base.CustomDatasetWrapper):
             base_path = os.path.join(
                 base_models_dir, "label_noise:{}".format(train_config.label_noise))
 
-        save_path = os.path.join(base_path, self.prop, self.split)
+        split_ = self.split
+        if self.adv_use_frac < 1 and self.split == "adv":
+            split_ = "adv_%.2f" % self.adv_use_frac
+        save_path = os.path.join(base_path, self.prop, split_)
 
         if self.ratio is not None:
             save_path = os.path.join(save_path, str(self.ratio))

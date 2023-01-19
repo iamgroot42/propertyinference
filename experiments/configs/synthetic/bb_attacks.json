@@ -1,24 +1,23 @@
 {
     "train_config": {
         "data_config": {
-            "name": "new_census",
-            "prop": "race",
-            "split": "adv",
-            "squeeze": true,
+            "name": "synthetic",
+            "prop": "21",
+            "split": "victim",
             "value": 0.5,
-            "cwise_samples": 500
+            "drop_senstive_cols": true
         },
         "epochs": 0,
         "learning_rate": 0,
         "batch_size": 0
     },
-    "tries": 5,
+    "tries": 3,
     "black_box": {
         "granularity": 0.05,
         "num_adv_models": 50,
         "batch_size": 30000,
         "attack_type": [
-            "zhang"
+            "KL"
         ],
         "ratios": [
             1.0
@@ -26,16 +25,11 @@
         "preload": true
     },
     "values": [
-        0.0,
-        0.1,
         0.2,
         0.3,
-        0.4,
-        0.6,
-        0.7,
-        0.8,
-        0.9,
-        1.0
+        0.4
     ],
-    "num_victim_models": 250
+    "num_victim_models": 250,
+    "adv_model_arch": "mlp_4",
+    "victim_model_arch": "mlp_4"
 }

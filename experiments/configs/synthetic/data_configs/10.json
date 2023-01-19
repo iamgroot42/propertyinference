@@ -1,5 +1,5 @@
 {
-    "dimensionality": 128,
+    "dimensionality": 256,
     "cov": 3.0,
     "adv_noise_to_mean": 0.0,
     "noise_cov": 0.0,

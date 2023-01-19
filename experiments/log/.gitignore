@@ -2,3 +2,4 @@
 ./*/Combine/*.json
 ./*/Intermediate_result/*.p
 *.p
+training_synthetic/*

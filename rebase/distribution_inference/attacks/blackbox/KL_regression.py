@@ -24,7 +24,6 @@ class KLRegression(KLAttack):
             p_across = []
             for pa in preds_adv:
                 preds = self._get_kl_preds(pa, pv)
-                #print(preds.shape)
                 p_across.append(preds)
             p_across = np.array(p_across)
             p = np.divide(np.sum([i*x for i, x in zip(labels, p_across)], axis=0),
