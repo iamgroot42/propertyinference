@@ -66,7 +66,8 @@ def train_epoch(train_loader, model, criterion, optimizer, epoch,
                 input_is_list: bool = False,
                 regression: bool = False,
                 multi_class: bool = False,
-                shuffle_defense: ShuffleDefense = None):
+                shuffle_defense: ShuffleDefense = None,
+                use_polar_transform: bool = False):
     model.train()
     train_loss = AverageMeter()
     if not regression:
@@ -81,7 +82,8 @@ def train_epoch(train_loader, model, criterion, optimizer, epoch,
         else:
             data, labels = tuple
 
-        data = polar_transform(data)
+        if use_polar_transform:
+            data = polar_transform(data)
 
         # Use shuffle defense, as per need
         if shuffle_defense:
@@ -146,7 +148,9 @@ def validate_epoch(val_loader, model, criterion,
                    get_preds: bool = False,
                    multi_class: bool = False,
                    more_metrics: bool = False,
-                   element_wise: bool = False):
+                   element_wise: bool = False,
+                   use_polar_transform: bool = False
+                   ):
     model.eval()
     val_loss = AverageMeter()
     adv_val_loss = AverageMeter()
@@ -167,10 +171,12 @@ def validate_epoch(val_loader, model, criterion,
             else:
                 data, labels = tuple
             if input_is_list:
-                data = polar_transform(data)
+                if use_polar_transform:
+                    data = polar_transform(data)
                 data = [x.cuda() for x in data]
             else:
-                data = polar_transform(data)
+                if use_polar_transform:
+                    data = polar_transform(data)
                 data = data.cuda()
 
             labels = labels.cuda()
@@ -390,7 +396,9 @@ def train_without_dp(model, loaders, train_config: TrainConfig,
                                   input_is_list=input_is_list,
                                   regression=train_config.regression,
                                   multi_class=train_config.multi_class,
-                                  shuffle_defense=shuffle_defense)
+                                  shuffle_defense=shuffle_defense,
+                                  use_polar_transform=extra_options["use_polar_transform"]
+                                  )
 
         # Get metrics on val data, if available
         if val_loader is not None:
@@ -407,7 +415,9 @@ def train_without_dp(model, loaders, train_config: TrainConfig,
                                                         input_is_list=input_is_list,
                                                         regression=train_config.regression,
                                                         multi_class=train_config.multi_class,
-                                                        more_metrics=more_metrics)
+                                                        more_metrics=more_metrics,
+                                                        use_polar_transform=extra_options["use_polar_transform"]
+                                                        )
         else:
             vloss, vacc = validate_epoch(use_loader_for_metric_log,
                                          model, criterion,
