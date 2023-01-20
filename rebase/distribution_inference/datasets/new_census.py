@@ -400,7 +400,7 @@ class CensusWrapper(base.CustomDatasetWrapper):
 
         split_ = self.split
         if self.adv_use_frac < 1 and self.split == "adv":
-            split_ = "adv_%.2f" % self.adv_use_frac
+            split_ = "adv_%.3f" % self.adv_use_frac
         save_path = os.path.join(base_path, self.prop, split_)
 
         if self.ratio is not None:
