@@ -33,10 +33,10 @@ if __name__ == "__main__":
                         type=str,
                         default='KL',
                         help='Which attack to plot')
-    # parser.add_argument("--focus",
-    #                     type=str,
-    #                     required=True,
-    #                     help='Which attribute to vary in plots')
+    parser.add_argument("--focus",
+                        type=str,
+                        required=True,
+                        help='Which attribute to vary in plots')
     args = parser.parse_args()
 
     df = []
@@ -56,9 +56,13 @@ if __name__ == "__main__":
     df = pd.DataFrame.from_dict(df)
     # Remove columns that do not have any variance in values
     df.loc[:, 'layer'] = df['layer'].apply(lambda x: ','.join([str(i) for i in x]))
+    for col in df.columns:
+        if col != 'ratio' and col != 'acc':
+            print(col, df[col].unique())
     df = df[df.columns[df.nunique() > 1]]
-    print(df.columns)
+    # Focus on specific ratios
+    ratios_wanted = ['0.2', '0.8']
+    #df = df[df['ratio'].isin(ratios_wanted)]
     # Plot
-    focus = 'dist_diff_std'
-    graph = sns.boxplot(df, x=focus, y='acc', hue=focus)
+    graph = sns.boxplot(df, x=args.focus, y='acc', hue=args.focus)
     graph.figure.savefig('syn_trend.png')
