@@ -126,7 +126,9 @@ class KLAttack(Attack):
     
     def _check(self, x):
         if np.sum(np.isinf(x)) > 0 or np.sum(np.isnan(x)) > 0:
-            print("Invalid values:", x)
+            print("Invalid values somewhere in:", x)
+            print("NaNs?:", np.sum(np.isnan(x)))
+            print("infs?:", np.sum(np.isinf(x)))
             raise ValueError("Invalid values found!")
 
     def _pairwise_compare(self, x, y, xx, yy):
