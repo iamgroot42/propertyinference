@@ -136,6 +136,7 @@ if __name__ == "__main__":
                                                  extra_options={
                 "curren_model_num": i + train_config.offset,
                 "save_path_fn": ds.get_save_path,
+                "use_polar_transform": data_config.use_polar_transform,
                 "more_metrics": EXTRA},
                 shuffle_defense=shuffle_defense)
             # logger.add_result(data_config.value, vloss, vacc, extras)
@@ -144,7 +145,8 @@ if __name__ == "__main__":
                                          train_config=train_config,
                                          extra_options={
                 "curren_model_num": i + train_config.offset,
-                "save_path_fn": ds.get_save_path},
+                "save_path_fn": ds.get_save_path,
+                "use_polar_transform": data_config.use_polar_transform},
                 shuffle_defense=shuffle_defense)
             # logger.add_result(data_config.value, vloss, vacc)
 

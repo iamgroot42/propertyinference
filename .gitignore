@@ -28,3 +28,4 @@ resnet18_cifar/*
 vgg16_cifar/*
 implems/workspace.code-workspace
 implems/.ipynb_checkpoints/*
+cycnn-extension/*

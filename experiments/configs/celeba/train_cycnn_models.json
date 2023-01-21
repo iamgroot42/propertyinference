@@ -5,7 +5,8 @@
         "classify": "Male",
         "split": "victim",
         "value": 1.0,
-        "processed_variant": false
+        "processed_variant": false,
+        "use_polar_transform": true
     },
     "epochs": 100,
     "offset": 0,

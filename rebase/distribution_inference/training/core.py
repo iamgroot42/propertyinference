@@ -338,9 +338,6 @@ def train_without_dp(model, loaders, train_config: TrainConfig,
     else:
         train_loader, test_loader, val_loader = loaders
 
-    # check if any augmentation or transformation is needed
-    # if "polar_transform" in extra_options:
-
     # Define optimizer, loss function
     optimizer = ch.optim.Adam(
         model.parameters(),
@@ -397,7 +394,8 @@ def train_without_dp(model, loaders, train_config: TrainConfig,
                                   regression=train_config.regression,
                                   multi_class=train_config.multi_class,
                                   shuffle_defense=shuffle_defense,
-                                  use_polar_transform=extra_options["use_polar_transform"]
+                                  use_polar_transform=extra_options["use_polar_transform"] if extra_options != None and "use_polar_transform" in extra_options.keys(
+                                  ) else False
                                   )
 
         # Get metrics on val data, if available
@@ -416,7 +414,8 @@ def train_without_dp(model, loaders, train_config: TrainConfig,
                                                         regression=train_config.regression,
                                                         multi_class=train_config.multi_class,
                                                         more_metrics=more_metrics,
-                                                        use_polar_transform=extra_options["use_polar_transform"]
+                                                        use_polar_transform=extra_options["use_polar_transform"] if extra_options != None and "use_polar_transform" in extra_options.keys(
+                                                        ) else False
                                                         )
         else:
             vloss, vacc = validate_epoch(use_loader_for_metric_log,
