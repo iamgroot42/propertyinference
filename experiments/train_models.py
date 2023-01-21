@@ -17,6 +17,7 @@ torch.multiprocessing.set_sharing_strategy('file_system')
 
 
 EXTRA = False  # True
+
 if __name__ == "__main__":
     parser = ArgumentParser(add_help=False)
     parser.add_argument(
@@ -131,9 +132,10 @@ if __name__ == "__main__":
 
         # Train model
         if EXTRA:
-            model, (vloss, vacc, extras) = train(model, (train_loader, val_loader),
-                                                 train_config=train_config,
-                                                 extra_options={
+            # model, (vloss, vacc, extras) = train(model, (train_loader, val_loader),
+            model, (vloss, vacc) = train(model, (train_loader, val_loader),
+                                         train_config=train_config,
+                                         extra_options={
                 "curren_model_num": i + train_config.offset,
                 "save_path_fn": ds.get_save_path,
                 "use_polar_transform": data_config.use_polar_transform,

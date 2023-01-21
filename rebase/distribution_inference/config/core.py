@@ -102,6 +102,8 @@ class DatasetConfig(Serializable):
     """Prune graph by removing nodes? (only valid for arXiv dataset)"""
     use_polar_transform: Optional[bool] = False
     """Transform images with polar transform (only valid for CyCNN models)"""
+    adv_use_frac: Optional[float] = 1.0
+    """What percentage of data should be used to train adv models (out of the quota reserved)"""
 
 
 @dataclass
