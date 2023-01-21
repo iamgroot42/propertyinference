@@ -27,7 +27,8 @@ class DatasetInformation(base.DatasetInformation):
                                      'Wavy_Hair', 'High_Cheekbones'],
                          values={"Male": ratios, "Young": ratios,
                                  'Wavy_Hair': ratios, 'High_Cheekbones': ratios},
-                         supported_models=["inception", "alexnet", "mlp2"],
+                         supported_models=["inception",
+                                           "alexnet", "mlp2", "alexnetcy"],
                          default_model="alexnet",
                          epoch_wise=epoch_wise)
         self.preserve_properties = ['Smiling', 'Young', 'Male', 'Attractive']
