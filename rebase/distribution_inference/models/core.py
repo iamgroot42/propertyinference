@@ -175,7 +175,7 @@ class InceptionModel(BaseModel):
         return self.model(x)
 
 
-class MyAlexNetOG(BaseModel):
+class MyAlexNet(BaseModel):
     def __init__(self,
                  num_classes: int = 1,
                  fake_relu: bool = False,
@@ -297,7 +297,7 @@ class MyAlexNetOG(BaseModel):
                     return x
 
 
-class MyAlexNet(BaseModel):
+class MyAlexNetCyCNN(BaseModel):
     def __init__(self,
                  num_classes: int = 1,
                  fake_relu: bool = False,

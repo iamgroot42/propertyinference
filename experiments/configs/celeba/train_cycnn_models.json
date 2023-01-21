@@ -16,5 +16,5 @@
     "num_models": 500,
     "get_best": true,
     "verbose": true,
-    "model_arch": "alexnet"
+    "model_arch": "alexnetcy"
 }
