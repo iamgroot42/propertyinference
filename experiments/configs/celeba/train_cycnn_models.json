@@ -5,15 +5,16 @@
         "classify": "Male",
         "split": "victim",
         "value": 1.0,
-        "processed_variant": false
+        "processed_variant": false,
+        "use_polar_transform": true
     },
-    "epochs": 10,
+    "epochs": 100,
     "offset": 0,
     "learning_rate": 1e-4,
     "batch_size": 128,
     "weight_decay": 1e-3,
     "num_models": 500,
     "get_best": true,
-    "verbose": false,
-    "model_arch": "alexnet"
+    "verbose": true,
+    "model_arch": "alexnetcy"
 }
