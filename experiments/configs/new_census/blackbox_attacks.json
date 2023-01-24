@@ -3,10 +3,10 @@
         "data_config": {
             "name": "new_census",
             "prop": "sex",
-            "split": "adv",
+            "split": "victim",
             "squeeze": true,
             "value": 0.5,
-            "cwise_samples": 1e4
+            "adv_use_frac": 0.01
         },
         "epochs": 0,
         "learning_rate": 0,
@@ -23,9 +23,7 @@
         "ratios": [
             1.0
         ],
-        "preload": true,
-        "merlin_std": 0.05,
-        "merlin_neighbors": 100
+        "preload": true
     },
     "values": [
         0.0,
