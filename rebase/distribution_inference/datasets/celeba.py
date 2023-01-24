@@ -27,7 +27,8 @@ class DatasetInformation(base.DatasetInformation):
                                      'Wavy_Hair', 'High_Cheekbones'],
                          values={"Male": ratios, "Young": ratios,
                                  'Wavy_Hair': ratios, 'High_Cheekbones': ratios},
-                         supported_models=["inception", "alexnet", "mlp2"],
+                         supported_models=["inception",
+                                           "alexnet", "mlp2", "alexnetcy"],
                          default_model="alexnet",
                          epoch_wise=epoch_wise)
         self.preserve_properties = ['Smiling', 'Young', 'Male', 'Attractive']
@@ -56,6 +57,10 @@ class DatasetInformation(base.DatasetInformation):
                 latent_focus=latent_focus)
         elif model_arch == "alexnet":
             model = models_core.MyAlexNet(
+                fake_relu=fake_relu,
+                latent_focus=latent_focus)
+        elif model_arch == "alexnetcy":
+            model = models_core.MyAlexNetCyCNN(
                 fake_relu=fake_relu,
                 latent_focus=latent_focus)
         elif model_arch == "mlp2":
@@ -320,7 +325,7 @@ class CelebACustomBinary(base.CustomDataset):
                 n_tries=100,
                 class_col=label_name,
                 verbose=True,
-                get_indices = True)
+                get_indices=True)
 
         # Extract filenames from parsed DF
         return parsed_df["filename"].tolist(), ids
@@ -436,7 +441,7 @@ class CelebaWrapper(base.CustomDatasetWrapper):
         ch.cuda.empty_cache()
         return features.shape[1:]
 
-    def load_data(self, indexed_data = None):
+    def load_data(self, indexed_data=None):
         # Read attributes file to get attribute names
         attrs, _ = _get_attributes(self.info_object.base_data_dir)
         # Create mapping between filename and attributes
@@ -504,7 +509,7 @@ class CelebaWrapper(base.CustomDatasetWrapper):
             features=features,
             indices=indices[1],)
         return ds_train, ds_val
-    
+
     def get_used_indices(self):
         train_ids_after = self.ds_train.ids
         val_ids_after = self.ds_val.ids
@@ -516,7 +521,7 @@ class CelebaWrapper(base.CustomDatasetWrapper):
                     val_factor: int = 2,
                     num_workers: int = 24,
                     prefetch_factor: int = 20,
-                    indexed_data = None):
+                    indexed_data=None):
         self.ds_train, self.ds_val = self.load_data(indexed_data)
         self._train_ids_before = self.ds_train.ids
         self._val_ids_before = self.ds_val.ids

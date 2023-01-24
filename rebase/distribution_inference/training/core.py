@@ -4,14 +4,43 @@ from tqdm import tqdm
 import torch as ch
 import torch.nn as nn
 import numpy as np
+import cv2 as cv
 from copy import deepcopy
 import os
+import math
 
 from distribution_inference.training.utils import AverageMeter, generate_adversarial_input, save_model, EarlyStopper
 from distribution_inference.config import TrainConfig, AdvTrainingConfig
 from distribution_inference.training.dp import train as train_with_dp
 from distribution_inference.training.graph import train as gcn_train
 from distribution_inference.utils import warning_string
+
+# CyCNN polar image transform
+
+
+def polar_transform(images, transform_type='linearpolar'):
+    """
+    This function takes multiple images, and apply polar coordinate conversion to it.
+    """
+
+    (N, C, H, W) = images.shape
+
+    for i in range(images.shape[0]):
+
+        img = images[i].numpy()  # [C,H,W]
+        img = np.transpose(img, (1, 2, 0))  # [H,W,C]
+
+        if transform_type == 'logpolar':
+            img = cv.logPolar(img, (H // 2, W // 2), W / math.log(W / 2),
+                              cv.WARP_FILL_OUTLIERS).reshape(H, W, C)
+        elif transform_type == 'linearpolar':
+            img = cv.linearPolar(img, (H // 2, W // 2),
+                                 W / 2, cv.WARP_FILL_OUTLIERS).reshape(H, W, C)
+        img = np.transpose(img, (2, 0, 1))
+
+        images[i] = ch.from_numpy(img)
+
+    return images
 
 
 def train(model, loaders, train_config: TrainConfig,
@@ -37,7 +66,8 @@ def train_epoch(train_loader, model, criterion, optimizer, epoch,
                 input_is_list: bool = False,
                 regression: bool = False,
                 multi_class: bool = False,
-                shuffle_defense: ShuffleDefense = None):
+                shuffle_defense: ShuffleDefense = None,
+                use_polar_transform: bool = False):
     model.train()
     train_loss = AverageMeter()
     if not regression:
@@ -51,7 +81,10 @@ def train_epoch(train_loader, model, criterion, optimizer, epoch,
             data, labels, prop_labels = tuple
         else:
             data, labels = tuple
-        
+
+        if use_polar_transform:
+            data = polar_transform(data)
+
         # Use shuffle defense, as per need
         if shuffle_defense:
             data, labels, prop_labels = shuffle_defense.process_batch(
@@ -64,7 +97,7 @@ def train_epoch(train_loader, model, criterion, optimizer, epoch,
             data = data.cuda()
         labels = labels.cuda()
         N = labels.size(0)
-        
+
         if adv_config is None:
             # Clear accumulated gradients
             optimizer.zero_grad()
@@ -114,8 +147,10 @@ def validate_epoch(val_loader, model, criterion,
                    regression: bool = False,
                    get_preds: bool = False,
                    multi_class: bool = False,
-                   more_metrics: bool=False,
-                   element_wise: bool = False):
+                   more_metrics: bool = False,
+                   element_wise: bool = False,
+                   use_polar_transform: bool = False
+                   ):
     model.eval()
     val_loss = AverageMeter()
     adv_val_loss = AverageMeter()
@@ -127,7 +162,7 @@ def validate_epoch(val_loader, model, criterion,
             num_pred_pos = 0
             num_actual_pos = 0
             assert not multi_class, "No implementation"
-            
+
     collected_preds = []
     with ch.set_grad_enabled(adv_config is not None):
         for tuple in val_loader:
@@ -136,9 +171,14 @@ def validate_epoch(val_loader, model, criterion,
             else:
                 data, labels = tuple
             if input_is_list:
+                if use_polar_transform:
+                    data = polar_transform(data)
                 data = [x.cuda() for x in data]
             else:
+                if use_polar_transform:
+                    data = polar_transform(data)
                 data = data.cuda()
+
             labels = labels.cuda()
             N = labels.size(0)
 
@@ -157,10 +197,11 @@ def validate_epoch(val_loader, model, criterion,
                 val_acc.update(prediction.eq(
                     labels.view_as(prediction)).sum().item()/N)
                 if more_metrics:
-                    num_true_pos+=ch.logical_and(prediction,labels.view_as(prediction)).sum().item()
-                    num_pred_pos+=prediction.sum().item()
-                    num_actual_pos+=labels.sum().item()
-                
+                    num_true_pos += ch.logical_and(prediction,
+                                                   labels.view_as(prediction)).sum().item()
+                    num_pred_pos += prediction.sum().item()
+                    num_actual_pos += labels.sum().item()
+
             val_loss_specific = criterion(
                 outputs, labels.long() if multi_class else labels.float())
             if element_wise:
@@ -221,11 +262,11 @@ def validate_epoch(val_loader, model, criterion,
                 return val_loss.avg, None
         if get_preds:
             if more_metrics:
-                return val_loss.avg, val_acc.avg, collected_preds, {"precision":precision,"recall":recall,"F1":F1}
+                return val_loss.avg, val_acc.avg, collected_preds, {"precision": precision, "recall": recall, "F1": F1}
             return val_loss.avg, val_acc.avg, collected_preds
         else:
             if more_metrics:
-                return val_loss.avg, val_acc.avg, {"precision":precision,"recall":recall,"F1":F1}
+                return val_loss.avg, val_acc.avg, {"precision": precision, "recall": recall, "F1": F1}
             return val_loss.avg, val_acc.avg
     if regression:
         if get_preds:
@@ -247,7 +288,7 @@ def sklearn_train(model, loaders, train_config: TrainConfig,
             print(warning_string("\nUsing test-data to pick best-performing model\n"))
     else:
         train_loader, test_loader, _ = loaders
-    
+
     def _collect_from_loader(loader):
         x, y = [], []
         for tuple in loader:
@@ -257,21 +298,22 @@ def sklearn_train(model, loaders, train_config: TrainConfig,
 
     train_data = _collect_from_loader(train_loader)
     test_data = _collect_from_loader(test_loader)
-    
+
     # Train model
     model.fit(*train_data)
     # Evaluate model
     test_acc = model.acc(*test_data)
     test_loss = model.score(*test_data)
-    print("acc:{}, loss:{}".format ( test_acc,test_loss))
+    print("acc:{}, loss:{}".format(test_acc, test_loss))
     if train_config.get_best:
         return model, (test_loss, test_acc)
-    
+
     return test_loss, test_acc
 
 
 def train_without_dp(model, loaders, train_config: TrainConfig,
                      input_is_list: bool = False,
+                     # this might have an entry that coresponds to data augmentation, if so then apply the image transforms from cycnn
                      extra_options: dict = None,
                      shuffle_defense: ShuffleDefense = None):
     if extra_options != None and "more_metrics" in extra_options.keys():
@@ -281,7 +323,7 @@ def train_without_dp(model, loaders, train_config: TrainConfig,
     # Wrap with dataparallel if requested
     if train_config.parallel:
         model = ch.nn.DataParallel(model)
-    
+
     early_stopper = None
     if train_config.early_stopping is not None:
         early_stop_config = train_config.early_stopping
@@ -351,7 +393,10 @@ def train_without_dp(model, loaders, train_config: TrainConfig,
                                   input_is_list=input_is_list,
                                   regression=train_config.regression,
                                   multi_class=train_config.multi_class,
-                                  shuffle_defense=shuffle_defense)
+                                  shuffle_defense=shuffle_defense,
+                                  use_polar_transform=extra_options["use_polar_transform"] if extra_options != None and "use_polar_transform" in extra_options.keys(
+                                  ) else False
+                                  )
 
         # Get metrics on val data, if available
         if val_loader is not None:
@@ -361,23 +406,26 @@ def train_without_dp(model, loaders, train_config: TrainConfig,
 
         if more_metrics:
             vloss, vacc, extra_metrics = validate_epoch(use_loader_for_metric_log,
-                                     model, criterion,
-                                     verbose=train_config.verbose,
-                                     adv_config=adv_config,
-                                     expect_extra=train_config.expect_extra,
-                                     input_is_list=input_is_list,
-                                     regression=train_config.regression,
-                                     multi_class=train_config.multi_class,
-                                     more_metrics=more_metrics)
+                                                        model, criterion,
+                                                        verbose=train_config.verbose,
+                                                        adv_config=adv_config,
+                                                        expect_extra=train_config.expect_extra,
+                                                        input_is_list=input_is_list,
+                                                        regression=train_config.regression,
+                                                        multi_class=train_config.multi_class,
+                                                        more_metrics=more_metrics,
+                                                        use_polar_transform=extra_options["use_polar_transform"] if extra_options != None and "use_polar_transform" in extra_options.keys(
+                                                        ) else False
+                                                        )
         else:
             vloss, vacc = validate_epoch(use_loader_for_metric_log,
-                                     model, criterion,
-                                     verbose=train_config.verbose,
-                                     adv_config=adv_config,
-                                     expect_extra=train_config.expect_extra,
-                                     input_is_list=input_is_list,
-                                     regression=train_config.regression,
-                                     multi_class=train_config.multi_class)
+                                         model, criterion,
+                                         verbose=train_config.verbose,
+                                         adv_config=adv_config,
+                                         expect_extra=train_config.expect_extra,
+                                         input_is_list=input_is_list,
+                                         regression=train_config.regression,
+                                         multi_class=train_config.multi_class)
 
         # LR Scheduler, if requested
         if lr_scheduler is not None:
@@ -433,7 +481,7 @@ def train_without_dp(model, loaders, train_config: TrainConfig,
             if not os.path.isdir(os.path.dirname(save_path)):
                 os.makedirs(os.path.dirname(save_path))
             save_model(model, save_path)
-        
+
         # If early stopper is present, implement
         if early_stopper is not None:
             should_stop = early_stopper.step(vloss)
@@ -452,26 +500,26 @@ def train_without_dp(model, loaders, train_config: TrainConfig,
     if val_loader is not None:
         if more_metrics:
             test_loss, test_acc, extra_metrics_te = validate_epoch(
-            test_loader,
-            model, criterion,
-            verbose=False,
-            adv_config=adv_config,
-            expect_extra=train_config.expect_extra,
-            input_is_list=input_is_list,
-            regression=train_config.regression,
-            multi_class=train_config.multi_class,
-            more_metrics=more_metrics)
+                test_loader,
+                model, criterion,
+                verbose=False,
+                adv_config=adv_config,
+                expect_extra=train_config.expect_extra,
+                input_is_list=input_is_list,
+                regression=train_config.regression,
+                multi_class=train_config.multi_class,
+                more_metrics=more_metrics)
         else:
             test_loss, test_acc = validate_epoch(
-            test_loader,
-            model, criterion,
-            verbose=False,
-            adv_config=adv_config,
-            expect_extra=train_config.expect_extra,
-            input_is_list=input_is_list,
-            regression=train_config.regression,
-            multi_class=train_config.multi_class,
-            more_metrics=more_metrics)
+                test_loader,
+                model, criterion,
+                verbose=False,
+                adv_config=adv_config,
+                expect_extra=train_config.expect_extra,
+                input_is_list=input_is_list,
+                regression=train_config.regression,
+                multi_class=train_config.multi_class,
+                more_metrics=more_metrics)
     else:
         test_loss, test_acc = vloss, vacc
         if more_metrics:

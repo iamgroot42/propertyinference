@@ -27,6 +27,7 @@ class AdvTrainingConfig(Serializable):
     scale_by_255: bool = False
     """Scale given epsilon by 255?"""
 
+
 @dataclass
 class RegressionConfig(Serializable):
     """
@@ -99,6 +100,8 @@ class DatasetConfig(Serializable):
     """Use processed version of data (relevant for BoneAge,CelebA)?"""
     prune: Optional[float] = 0
     """Prune graph by removing nodes? (only valid for arXiv dataset)"""
+    use_polar_transform: Optional[bool] = False
+    """Transform images with polar transform (only valid for CyCNN models)"""
     adv_use_frac: Optional[float] = 1.0
     """What percentage of data should be used to train adv models (out of the quota reserved)"""
 
@@ -283,7 +286,7 @@ class BlackBoxAttackConfig(Serializable):
     "Start epoch to consider for single-update attack"
     End_epoch: Optional[int] = 20
     "End epoch to consider for single-update attack"
-    
+
     relative_threshold: Optional[bool] = False
     """Thresholds are relative to mean accuracy/logits"""
     loss_variant: Optional[bool] = False
@@ -297,11 +300,11 @@ class BlackBoxAttackConfig(Serializable):
     """Frac of pairs to use (if KL test)"""
     kl_voting: Optional[bool] = False
     """Use comparison instead of differences"""
-    generative_attack: Optional[GenerativeAttackConfig]=None
+    generative_attack: Optional[GenerativeAttackConfig] = None
     """Use generative attack?"""
     order_name: Optional[str] = None
     """Type of ordering to use"""
-    geo_mean:Optional[bool] = False
+    geo_mean: Optional[bool] = False
     regression_config: Optional[RegressionConfig] = None
 
     merlin_mean: Optional[float] = 0.0
@@ -373,6 +376,7 @@ class ComparisonAttackConfig(Serializable):
     num_models: int
     """Number of models to use for attack"""
 
+
 @dataclass
 class WhiteBoxAttackConfig(Serializable):
     """
@@ -433,6 +437,7 @@ class WhiteBoxAttackConfig(Serializable):
     """Configuration for affinity-based attacks"""
     comparison_config: Optional[ComparisonAttackConfig] = None
 
+
 @dataclass
 class FairnessEvalConfig(Serializable):
     """
@@ -454,6 +459,7 @@ class FairnessEvalConfig(Serializable):
     """Keep models read on CPU?"""
     preload: Optional[bool] = False
     """Pre-load data while launching attack (faster, if memory available)?"""
+
 
 @dataclass
 class AttackConfig(Serializable):
@@ -493,7 +499,6 @@ class AttackConfig(Serializable):
     """Which epoch to target for victim. If not None, automatically use last epoch"""
 
 
-    
 @dataclass
 class UnlearningConfig(Serializable):
     """
