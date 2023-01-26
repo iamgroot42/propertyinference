@@ -1,0 +1,3 @@
+[submodule "CyCNN"]
+	path = CyCNN
+	url = https://github.com/mcrl/CyCNN.git
