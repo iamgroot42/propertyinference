@@ -414,9 +414,7 @@ def train_without_dp(model, loaders, train_config: TrainConfig,
                                                         regression=train_config.regression,
                                                         multi_class=train_config.multi_class,
                                                         more_metrics=more_metrics,
-                                                        use_polar_transform=extra_options["use_polar_transform"] if extra_options != None and "use_polar_transform" in extra_options.keys(
-                                                        ) else False
-                                                        )
+                                                        use_polar_transform=extra_options["use_polar_transform"] if extra_options != None and "use_polar_transform" in extra_options.keys() else False)
         else:
             vloss, vacc = validate_epoch(use_loader_for_metric_log,
                                          model, criterion,
@@ -425,7 +423,9 @@ def train_without_dp(model, loaders, train_config: TrainConfig,
                                          expect_extra=train_config.expect_extra,
                                          input_is_list=input_is_list,
                                          regression=train_config.regression,
-                                         multi_class=train_config.multi_class)
+                                         multi_class=train_config.multi_class,
+                                         use_polar_transform=extra_options["use_polar_transform"] if extra_options != None and "use_polar_transform" in extra_options.keys(
+                                         ) else False)
 
         # LR Scheduler, if requested
         if lr_scheduler is not None:
@@ -508,7 +508,8 @@ def train_without_dp(model, loaders, train_config: TrainConfig,
                 input_is_list=input_is_list,
                 regression=train_config.regression,
                 multi_class=train_config.multi_class,
-                more_metrics=more_metrics)
+                more_metrics=more_metrics,
+                use_polar_transform=extra_options["use_polar_transform"] if extra_options != None and "use_polar_transform" in extra_options.keys() else False)
         else:
             test_loss, test_acc = validate_epoch(
                 test_loader,
@@ -519,7 +520,8 @@ def train_without_dp(model, loaders, train_config: TrainConfig,
                 input_is_list=input_is_list,
                 regression=train_config.regression,
                 multi_class=train_config.multi_class,
-                more_metrics=more_metrics)
+                more_metrics=more_metrics,
+                use_polar_transform=extra_options["use_polar_transform"] if extra_options != None and "use_polar_transform" in extra_options.keys() else False)
     else:
         test_loss, test_acc = vloss, vacc
         if more_metrics:
