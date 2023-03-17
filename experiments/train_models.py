@@ -171,7 +171,8 @@ if __name__ == "__main__":
                 indices = (train_ids, test_ids)
 
             # Save model
-            # save_model(model, save_path, indices=indices) prevent overwriting
+            # print(save_path)
+            save_model(model, save_path, indices=indices)
             # exit(0)
 
             # Save logger

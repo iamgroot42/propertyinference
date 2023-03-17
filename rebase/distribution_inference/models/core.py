@@ -15,7 +15,7 @@ from sklearn.svm import SVC
 import torch.nn.functional as F
 from dgl.nn.pytorch import GraphConv
 
-from distribution_inference.models.utils import BasicWrapper, FakeReluWrapper
+from distribution_inference.models.utils import BasicWrapper, FakeReluWrapper, polar_transform
 
 import CyConv2d_cuda
 
@@ -357,6 +357,10 @@ class MyAlexNetCyCNN(BaseModel):
                 get_all: bool = False,
                 layers_to_target_conv: List[int] = None,
                 layers_to_target_fc: List[int] = None,) -> ch.Tensor:
+    
+        # First of all, apply polar transform
+        device_wanted = x.get_device()
+        x = polar_transform(x.cpu()).to(device_wanted)
 
         # Override list of layers if given
         valid_conv = layers_to_target_conv if layers_to_target_conv else self.valid_for_all_conv

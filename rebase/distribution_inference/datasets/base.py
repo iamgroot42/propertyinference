@@ -209,6 +209,10 @@ class CustomDatasetWrapper:
 
             self.mask_data_selection(mask_train, mask_val)
             self.set_augment_process_fn(process_fn)
+        
+        # If prefetch factor > 1, set num_workers > 0
+        if num_workers == 0:
+            prefetch_factor = None
                     
         # This function should return new loaders at every call
         train_loader = DataLoader(

@@ -100,8 +100,6 @@ class DatasetConfig(Serializable):
     """Use processed version of data (relevant for BoneAge,CelebA)?"""
     prune: Optional[float] = 0
     """Prune graph by removing nodes? (only valid for arXiv dataset)"""
-    use_polar_transform: Optional[bool] = False
-    """Transform images with polar transform (only valid for CyCNN models)"""
     adv_use_frac: Optional[float] = 1.0
     """What percentage of data should be used to train adv models (out of the quota reserved)"""
 
@@ -203,6 +201,8 @@ class TrainConfig(Serializable):
     """Use learning-rate scheduler?"""
     verbose: Optional[bool] = False
     """Whether to print out per-classifier stats"""
+    quiet: Optional[bool] = False
+    """Completely suppress output?"""
     num_models: int = 1
     """Number of models to train"""
     offset: Optional[int] = 0
@@ -327,6 +327,17 @@ class PermutationAttackConfig(Serializable):
 
 
 @dataclass
+class FinetuneAttackConfig(Serializable):
+    """
+        Configuration values for finetuning-based attack
+    """
+    inspection_parameter: str = field(choices=["grad_norm", "acc", "loss"])
+    """What parameter to track for making prediction"""
+    num_ft_epochs: Optional[int] = 1
+    """Number of epochs to finetune model for"""
+
+
+@dataclass
 class AffinityAttackConfig(Serializable):
     """
         Configuration for affinity-based meta-classifier
@@ -436,6 +447,9 @@ class WhiteBoxAttackConfig(Serializable):
     affinity_config: Optional[AffinityAttackConfig] = None
     """Configuration for affinity-based attacks"""
     comparison_config: Optional[ComparisonAttackConfig] = None
+    """Configuration for comparison-based attacks"""
+    finetune_config: Optional[FinetuneAttackConfig] = None
+    """Configuration for finetuning-based attacks"""
 
 
 @dataclass

@@ -12,35 +12,8 @@ import math
 from distribution_inference.training.utils import AverageMeter, generate_adversarial_input, save_model, EarlyStopper
 from distribution_inference.config import TrainConfig, AdvTrainingConfig
 from distribution_inference.training.dp import train as train_with_dp
-from distribution_inference.training.graph import train as gcn_train
+# from distribution_inference.training.graph import train as gcn_train
 from distribution_inference.utils import warning_string
-
-# CyCNN polar image transform
-
-
-def polar_transform(images, transform_type='linearpolar'):
-    """
-    This function takes multiple images, and apply polar coordinate conversion to it.
-    """
-
-    (N, C, H, W) = images.shape
-
-    for i in range(images.shape[0]):
-
-        img = images[i].numpy()  # [C,H,W]
-        img = np.transpose(img, (1, 2, 0))  # [H,W,C]
-
-        if transform_type == 'logpolar':
-            img = cv.logPolar(img, (H // 2, W // 2), W / math.log(W / 2),
-                              cv.WARP_FILL_OUTLIERS).reshape(H, W, C)
-        elif transform_type == 'linearpolar':
-            img = cv.linearPolar(img, (H // 2, W // 2),
-                                 W / 2, cv.WARP_FILL_OUTLIERS).reshape(H, W, C)
-        img = np.transpose(img, (2, 0, 1))
-
-        images[i] = ch.from_numpy(img)
-
-    return images
 
 
 def train(model, loaders, train_config: TrainConfig,
@@ -49,8 +22,8 @@ def train(model, loaders, train_config: TrainConfig,
           shuffle_defense: ShuffleDefense = None):
     if model.is_sklearn_model:
         return sklearn_train(model, loaders, train_config, extra_options)
-    elif model.is_graph_model:
-        return gcn_train(model, loaders, train_config, extra_options)
+    # elif model.is_graph_model:
+        # return gcn_train(model, loaders, train_config, extra_options)
     if train_config.misc_config and train_config.misc_config.dp_config:
         # If DP training, call appropriate function
         return train_with_dp(model, loaders, train_config, input_is_list, extra_options)
@@ -66,8 +39,7 @@ def train_epoch(train_loader, model, criterion, optimizer, epoch,
                 input_is_list: bool = False,
                 regression: bool = False,
                 multi_class: bool = False,
-                shuffle_defense: ShuffleDefense = None,
-                use_polar_transform: bool = False):
+                shuffle_defense: ShuffleDefense = None):
     model.train()
     train_loss = AverageMeter()
     if not regression:
@@ -81,9 +53,6 @@ def train_epoch(train_loader, model, criterion, optimizer, epoch,
             data, labels, prop_labels = tuple
         else:
             data, labels = tuple
-
-        if use_polar_transform:
-            data = polar_transform(data)
 
         # Use shuffle defense, as per need
         if shuffle_defense:
@@ -148,9 +117,7 @@ def validate_epoch(val_loader, model, criterion,
                    get_preds: bool = False,
                    multi_class: bool = False,
                    more_metrics: bool = False,
-                   element_wise: bool = False,
-                   use_polar_transform: bool = False
-                   ):
+                   element_wise: bool = False):
     model.eval()
     val_loss = AverageMeter()
     adv_val_loss = AverageMeter()
@@ -171,12 +138,8 @@ def validate_epoch(val_loader, model, criterion,
             else:
                 data, labels = tuple
             if input_is_list:
-                if use_polar_transform:
-                    data = polar_transform(data)
                 data = [x.cuda() for x in data]
             else:
-                if use_polar_transform:
-                    data = polar_transform(data)
                 data = data.cuda()
 
             labels = labels.cuda()
@@ -365,7 +328,7 @@ def train_without_dp(model, loaders, train_config: TrainConfig,
             verbose=scheduler_config.verbose)
 
     iterator = range(1, train_config.epochs + 1)
-    if not train_config.verbose:
+    if not (train_config.verbose or train_config.quiet):
         iterator = tqdm(iterator)
 
     adv_config = None
@@ -393,10 +356,7 @@ def train_without_dp(model, loaders, train_config: TrainConfig,
                                   input_is_list=input_is_list,
                                   regression=train_config.regression,
                                   multi_class=train_config.multi_class,
-                                  shuffle_defense=shuffle_defense,
-                                  use_polar_transform=extra_options["use_polar_transform"] if extra_options != None and "use_polar_transform" in extra_options.keys(
-                                  ) else False
-                                  )
+                                  shuffle_defense=shuffle_defense)
 
         # Get metrics on val data, if available
         if val_loader is not None:
@@ -413,8 +373,7 @@ def train_without_dp(model, loaders, train_config: TrainConfig,
                                                         input_is_list=input_is_list,
                                                         regression=train_config.regression,
                                                         multi_class=train_config.multi_class,
-                                                        more_metrics=more_metrics,
-                                                        use_polar_transform=extra_options["use_polar_transform"] if extra_options != None and "use_polar_transform" in extra_options.keys() else False)
+                                                        more_metrics=more_metrics)
         else:
             vloss, vacc = validate_epoch(use_loader_for_metric_log,
                                          model, criterion,
@@ -423,16 +382,14 @@ def train_without_dp(model, loaders, train_config: TrainConfig,
                                          expect_extra=train_config.expect_extra,
                                          input_is_list=input_is_list,
                                          regression=train_config.regression,
-                                         multi_class=train_config.multi_class,
-                                         use_polar_transform=extra_options["use_polar_transform"] if extra_options != None and "use_polar_transform" in extra_options.keys(
-                                         ) else False)
+                                         multi_class=train_config.multi_class)
 
         # LR Scheduler, if requested
         if lr_scheduler is not None:
             lr_scheduler.step(vloss)
 
         # Log appropriate metrics
-        if not train_config.verbose:
+        if not (train_config.verbose or train_config.quiet):
             if adv_config is None:
                 if train_config.regression:
                     iterator.set_description(
@@ -508,8 +465,7 @@ def train_without_dp(model, loaders, train_config: TrainConfig,
                 input_is_list=input_is_list,
                 regression=train_config.regression,
                 multi_class=train_config.multi_class,
-                more_metrics=more_metrics,
-                use_polar_transform=extra_options["use_polar_transform"] if extra_options != None and "use_polar_transform" in extra_options.keys() else False)
+                more_metrics=more_metrics)
         else:
             test_loss, test_acc = validate_epoch(
                 test_loader,
@@ -520,8 +476,7 @@ def train_without_dp(model, loaders, train_config: TrainConfig,
                 input_is_list=input_is_list,
                 regression=train_config.regression,
                 multi_class=train_config.multi_class,
-                more_metrics=more_metrics,
-                use_polar_transform=extra_options["use_polar_transform"] if extra_options != None and "use_polar_transform" in extra_options.keys() else False)
+                more_metrics=more_metrics)
     else:
         test_loss, test_acc = vloss, vacc
         if more_metrics:

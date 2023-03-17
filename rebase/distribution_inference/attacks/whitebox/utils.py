@@ -7,6 +7,7 @@ from typing import List
 
 from distribution_inference.attacks.whitebox.permutation.permutation import PINAttack
 from distribution_inference.attacks.whitebox.affinity.affinity import AffinityAttack
+from distribution_inference.attacks.whitebox.finetune.finetune import FinetuneAttack
 from distribution_inference.attacks.whitebox.core import BasicDataset
 from distribution_inference.config import WhiteBoxAttackConfig
 from distribution_inference.models.core import BaseModel
@@ -16,7 +17,8 @@ import distribution_inference.datasets.utils as utils
 
 ATTACK_MAPPING = {
     "permutation_invariant": PINAttack,
-    "affinity": AffinityAttack
+    "affinity": AffinityAttack,
+    "finetune": FinetuneAttack
 }
 
 

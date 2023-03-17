@@ -1,5 +1,5 @@
 """
-This script generates loss, acc, and R cross
+    This script generates loss, acc, and R cross
 """
 from distribution_inference.training.core import validate_epoch
 from distribution_inference.config.core import DPTrainingConfig, MiscTrainConfig

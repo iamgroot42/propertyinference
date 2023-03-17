@@ -4,17 +4,16 @@
         "prop": "Young",
         "classify": "Male",
         "split": "victim",
-        "value": 1.0,
-        "processed_variant": false,
-        "use_polar_transform": true
+        "value": 0.0,
+        "processed_variant": false
     },
-    "epochs": 20,
+    "epochs": 15,
     "offset": 0,
     "learning_rate": 1e-4,
     "batch_size": 128,
     "weight_decay": 1e-3,
-    "num_models": 500,
+    "num_models": 125,
     "get_best": true,
-    "verbose": true,
+    "verbose": false,
     "model_arch": "alexnetcy"
 }
