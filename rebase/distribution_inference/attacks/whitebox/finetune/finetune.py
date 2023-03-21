@@ -10,6 +10,7 @@
 from typing import List, Tuple
 import torch as ch
 from tqdm import tqdm
+import gc
 from copy import deepcopy
 
 from distribution_inference.attacks.whitebox.core import Attack
@@ -69,7 +70,10 @@ class FinetuneAttack(Attack):
             norm_ref_1 = ft_utils.get_gradient_norms(model_og, d1_loader, binary=binary, regression=regression)
             norms_0 = ft_utils.get_gradient_norms(model_0, d0_loader, binary=binary, regression=regression)
             norms_1 = ft_utils.get_gradient_norms(model_1, d1_loader, binary=binary, regression=regression)
-            return norms_0, norms_1
+            relative_change_0 = (norm_ref_0 - norms_0) / norm_ref_0
+            relative_change_1 = (norm_ref_1 - norms_1) / norm_ref_1
+            # If gradient norm decreased a lot, data was probably not seen by model, so must be other distribution
+            prediction = 1 if relative_change_0 > relative_change_1 else 0
         elif self.config.finetune_config.inspection_parameter == "acc":
             # Higher accuracy change indicates less likely seen before
             acc_ref_0 = ft_utils.get_accuracy(model_og, d0_loader, binary=binary)
@@ -100,6 +104,9 @@ class FinetuneAttack(Attack):
         # Using train loaders for now- experiment with val loaders later
         loader_pick = 0
         prediction = self._analyze_metric(model, model_0, model_1, d0_loaders[loader_pick], d1_loaders[loader_pick])
+        del model_0, model_1
+        gc.collect()
+        ch.cuda.empty_cache()
         return prediction
 
     def execute_attack(self,
@@ -123,10 +130,12 @@ class FinetuneAttack(Attack):
         # Could add later as a calibration step, but for now attack is free of shadow models
 
         accuracy, count = 0, 0
-        for model, label in tqdm(test_loader, desc="Finetuning models for attack"):
+        iterator = tqdm(test_loader, desc="Finetuning models for attack")
+        for model, label in iterator:
             prediction = self._execute_individual_attack(model, (data_loaders_0, data_loaders_1), train_config)
             accuracy += (prediction == label)
             count += 1
+            iterator.set_description("Finetuning models for attack (Accuracy: {:.2f}%)".format(accuracy / count * 100))
 
-        chosen_accuracy = accuracy / count
+        chosen_accuracy = 100 * accuracy / count
         return chosen_accuracy

@@ -26,7 +26,7 @@ def get_gradient_norms(model, loader, binary=True, regression=False):
         Compute gradient norms for each batch in loader.
     """
     loss_fn = get_appropriate_loss_fn(binary, regression)
-    grad_norms = []
+    avg_grad_norm, num_items = 0, 0
     for tup in loader:
         x, y = tup[0], tup[1]
         x, y = x.cuda(), y.cuda()
@@ -34,11 +34,12 @@ def get_gradient_norms(model, loader, binary=True, regression=False):
         if binary:
             y = y.float()
         y_hat = model(x)
-        loss = loss_fn(y_hat, y)
+        loss = loss_fn(y_hat[:, 0], y)
         loss.backward()
         grad_norm = ch.norm(ch.cat([p.grad.view(-1) for p in model.parameters()]))
-        grad_norms.append(grad_norm.item())
-    return grad_norms
+        avg_grad_norm += grad_norm.item() * x.shape[0]
+        num_items += x.shape[0]
+    return avg_grad_norm / num_items
 
 
 @ch.no_grad()
