@@ -335,6 +335,8 @@ class FinetuneAttackConfig(Serializable):
     """What parameter to track for making prediction"""
     num_ft_epochs: Optional[int] = 1
     """Number of epochs to finetune model for"""
+    strict_ft: Optional[bool] = False
+    """Strict finetune (last N layers) or whole model to be finetuned?"""
 
 
 @dataclass

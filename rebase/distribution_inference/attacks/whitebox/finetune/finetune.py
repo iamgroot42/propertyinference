@@ -51,6 +51,10 @@ class FinetuneAttack(Attack):
             verbose=False, get_best=False, quiet=True)
 
         # Finetune copies of model on data from both distributions
+        if self.config.finetune_config.strict_ft:
+            model_0.set_to_finetune()
+            model_1.set_to_finetune()
+
         train(model_0, d0_loaders, train_config=train_config_ft)
         train(model_1, d1_loaders, train_config=train_config_ft)
         model_0.eval()
@@ -66,10 +70,19 @@ class FinetuneAttack(Attack):
         regression = (self.config.regression_config is not None)
         if self.config.finetune_config.inspection_parameter == "grad_norm":
             # Higher norms indicate less likely seen before
-            norm_ref_0 = ft_utils.get_gradient_norms(model_og, d0_loader, binary=binary, regression=regression)
-            norm_ref_1 = ft_utils.get_gradient_norms(model_og, d1_loader, binary=binary, regression=regression)
-            norms_0 = ft_utils.get_gradient_norms(model_0, d0_loader, binary=binary, regression=regression)
-            norms_1 = ft_utils.get_gradient_norms(model_1, d1_loader, binary=binary, regression=regression)
+            norm_ref_0, _ = ft_utils.get_gradient_norms(model_og, d0_loader, binary=binary, regression=regression)
+            norm_ref_1, _ = ft_utils.get_gradient_norms(model_og, d1_loader, binary=binary, regression=regression)
+            norms_0, _ = ft_utils.get_gradient_norms(
+                model_0, d0_loader, binary=binary, regression=regression)
+            norms_1, selected_ids = ft_utils.get_gradient_norms(
+                model_1, d1_loader, binary=binary, regression=regression)
+
+            # Compare layers that were finetuned, not others
+            norm_ref_0 = ch.mean(norm_ref_0[selected_ids]).item()
+            norm_ref_1 = ch.mean(norm_ref_1[selected_ids]).item()
+            norms_0 = ch.mean(norms_0[selected_ids]).item()
+            norms_1 = ch.mean(norms_1[selected_ids]).item()
+
             relative_change_0 = (norm_ref_0 - norms_0) / norm_ref_0
             relative_change_1 = (norm_ref_1 - norms_1) / norm_ref_1
             # If gradient norm decreased a lot, data was probably not seen by model, so must be other distribution
