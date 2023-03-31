@@ -53,6 +53,15 @@ class DPTrainingConfig(Serializable):
 
 
 @dataclass
+class ContrastiveConfig(Serializable):
+    """
+        Hyper-parameters for contrastive training.
+    """
+    sample_rate: float = 1.0
+    """Sampling rate for pairs of samples"""
+
+
+@dataclass
 class ShuffleDefenseConfig(Serializable):
     """
         Config to randomly sample during training
@@ -148,6 +157,8 @@ class MiscTrainConfig(Serializable):
     """Configuration to be used for DP training"""
     shuffle_defense_config: Optional[ShuffleDefenseConfig] = None
     """Configuration to be usef for shuffle-based defense"""
+    contrastive_config: Optional[ContrastiveConfig] = None
+    """Configuration to be used for contrastive training"""
 
 
 @dataclass

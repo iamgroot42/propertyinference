@@ -17,7 +17,7 @@ from dgl.nn.pytorch import GraphConv
 
 from distribution_inference.models.utils import BasicWrapper, FakeReluWrapper, polar_transform
 
-import CyConv2d_cuda
+# import CyConv2d_cuda
 
 
 class BaseModel(nn.Module):
@@ -25,12 +25,14 @@ class BaseModel(nn.Module):
                  is_conv: bool = False,
                  transpose_features: bool = True,
                  is_sklearn_model: bool = False,
-                 is_graph_model: bool = False):
+                 is_graph_model: bool = False,
+                 is_contrastive_model: bool = False):
         super().__init__()
         self.is_conv = is_conv
         self.transpose_features = transpose_features
         self.is_sklearn_model = is_sklearn_model
         self.is_graph_model = is_graph_model
+        self.is_contrastive_model = is_contrastive_model
 
     def forward(self, x: Union[np.ndarray, ch.Tensor]) -> Union[np.ndarray, ch.Tensor]:
         converted = False
@@ -63,6 +65,12 @@ class BaseModel(nn.Module):
 
     def acc(self, x, y):
         return self.model.score(x, y)
+
+    def set_to_finetune(self):
+        """
+            Make appropriate changes (if any) to model when it is to be used for fine-tuning
+        """
+        pass
 
 
 class SVMClassifier(BaseModel):
@@ -434,6 +442,12 @@ class MLPTwoLayer(BaseModel):
             nn.Linear(dims[1], num_classes),
         )
         self.valid_for_all_fc = [1, 3, 4]
+    
+    def set_to_finetune(self):
+        # Only finetune last linear layer
+        for name, param in self.layers.named_parameters():
+            if not name.startswith("4."):
+                param.requires_grad = False
 
     def forward(self, x,
                 detach_before_return: bool = False,

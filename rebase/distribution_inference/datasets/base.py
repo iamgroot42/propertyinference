@@ -3,9 +3,10 @@ from distribution_inference.defenses.active.shuffle import ShuffleDefense
 import numpy as np
 import torch as ch
 from torch.utils.data import DataLoader, Dataset
+from torch.utils.data.sampler import Sampler
 from tqdm import tqdm
 import torch.nn as nn
-from typing import List
+from typing import List, Optional
 import warnings
 
 from distribution_inference.utils import warning_string, log
@@ -22,11 +23,6 @@ class Constants:
         raise ValueError("DDI_DATA_DIRECTORY not set!")
     if base_models_directory is None:
         raise ValueError("DDI_MODELS_DIRECTORY not set!")
-    # if check_if_inside_cluster():
-    #     base_data_directory = "/project/uvasrg_paid/datasets/"
-    #     base_models_directory = "/project/uvasrg_paid/models/"
-    #     # base_data_directory = "/scratch/{}/datasets/".format(check_user())
-    #     # base_models_directory = "/scratch/{}/".format(check_user())
 
 
 class DatasetInformation:
@@ -180,7 +176,8 @@ class CustomDatasetWrapper:
                     eval_shuffle: bool = False,
                     val_factor: float = 1,
                     num_workers: int = 0,
-                    prefetch_factor: int = 2):
+                    prefetch_factor: int = 2,
+                    train_sampler: Optional[Sampler] = None,):
         
         if self.shuffle_defense:
             # This function should return new loaders at every call
@@ -189,6 +186,7 @@ class CustomDatasetWrapper:
                 batch_size=batch_size,
                 shuffle=False,
                 num_workers=10,
+                sampler=train_sampler,
                 worker_init_fn=utils.worker_init_fn,
                 #pin_memory=True,
                 prefetch_factor=prefetch_factor

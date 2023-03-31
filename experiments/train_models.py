@@ -124,6 +124,9 @@ if __name__ == "__main__":
                 model = ds_info.get_model(model_arch=train_config.model_arch,
                                           n_inp=ds.dimensionality,
                                           n_classes=ds.n_classes)
+            elif data_config.name == "maadface":
+                model = ds_info.get_model(model_arch=train_config.model_arch,
+                                         n_people=ds.n_people)
             else:
                 model = ds_info.get_model(model_arch=train_config.model_arch)
         else:
@@ -138,7 +141,6 @@ if __name__ == "__main__":
                                          extra_options={
                 "curren_model_num": i + train_config.offset,
                 "save_path_fn": ds.get_save_path,
-                "use_polar_transform": data_config.use_polar_transform,
                 "more_metrics": EXTRA},
                 shuffle_defense=shuffle_defense)
             # logger.add_result(data_config.value, vloss, vacc, extras)
@@ -147,8 +149,7 @@ if __name__ == "__main__":
                                          train_config=train_config,
                                          extra_options={
                 "curren_model_num": i + train_config.offset,
-                "save_path_fn": ds.get_save_path,
-                "use_polar_transform": data_config.use_polar_transform},
+                "save_path_fn": ds.get_save_path},
                 shuffle_defense=shuffle_defense)
             # logger.add_result(data_config.value, vloss, vacc)
 
