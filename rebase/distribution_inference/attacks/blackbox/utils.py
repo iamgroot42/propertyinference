@@ -22,6 +22,7 @@ from distribution_inference.attacks.blackbox.binary_perpoint import BinaryPerPoi
 from distribution_inference.attacks.blackbox.KL_regression import KLRegression
 from distribution_inference.attacks.blackbox.label_KL import label_only_KLAttack
 from distribution_inference.attacks.blackbox.zhang import ZhangAttack
+from distribution_inference.attacks.blackbox.att_ratio_attack import AttRatioAttack
 
 ATTACK_MAPPING = {
     "threshold_perpoint": PerPointThresholdAttack,
@@ -37,7 +38,8 @@ ATTACK_MAPPING = {
     "binary_perpoint": BinaryPerPointThresholdAttack,
     "KL_regression": KLRegression,
     "label_KL": label_only_KLAttack,
-    "zhang": ZhangAttack
+    "zhang": ZhangAttack,
+    "att_ratio": AttRatioAttack
 }
 
 
@@ -120,7 +122,8 @@ def get_preds(loader, models: List[nn.Module],
               preload: bool = False,
               verbose: bool = True,
               multi_class: bool = False,
-              latent: int = None):
+              latent: int = None,
+              get_prop_labels: bool = False):
     """
         Get predictions for given models on given data
     """
@@ -135,17 +138,24 @@ def get_preds(loader, models: List[nn.Module],
 
     predictions = []
     ground_truth = []
+    prop_labels = []
     inputs = []
     # Accumulate all data for given loader
     for data in loader:
         if len(data) == 2:
             features, labels = data
+            if get_prop_labels:
+                raise ValueError("Loader does not return prop labels")
         else:
-            features, labels, _ = data
+            features, labels, plabel= data
+            if get_prop_labels:
+                prop_labels.append(plabel.cpu().numpy())
         ground_truth.append(labels.cpu().numpy())
         if preload:
             inputs.append(features.cuda())
     ground_truth = np.concatenate(ground_truth, axis=0)
+    if get_prop_labels:
+        prop_labels = np.concatenate(prop_labels, axis=0)
 
     # Get predictions for each model
     iterator = models
@@ -207,6 +217,8 @@ def get_preds(loader, models: List[nn.Module],
     gc.collect()
     ch.cuda.empty_cache()
 
+    if get_prop_labels:
+        ground_truth = (ground_truth, prop_labels)
     return predictions, ground_truth
 
 
@@ -244,7 +256,8 @@ def _get_preds_for_vic_and_adv(
         loader,
         epochwise_version: bool = False,
         preload: bool = False,
-        multi_class: bool = False):
+        multi_class: bool = False,
+        get_prop_labels: bool = False):
 
     # Sklearn models do not support logits- take care of that
     use_prob_adv = models_adv[0].is_sklearn_model
@@ -269,7 +282,10 @@ def _get_preds_for_vic_and_adv(
     # Get predictions for adversary models and data
     preds_adv, ground_truth_repeat = get_preds(
         loader_adv, models_adv, preload=preload,
-        multi_class=multi_class)
+        multi_class=multi_class,
+        get_prop_labels=get_prop_labels)
+    if get_prop_labels:
+        ground_truth_repeat, prop_labels_repeat = ground_truth_repeat
     if not_using_logits and not use_prob_adv:
         preds_adv = to_preds(preds_adv)
 
@@ -280,7 +296,10 @@ def _get_preds_for_vic_and_adv(
         for models_inside_vic in tqdm(models_vic):
             preds_vic_inside, ground_truth = get_preds(
                 loader_vic, models_inside_vic, preload=preload,
-                verbose=False, multi_class=multi_class)
+                verbose=False, multi_class=multi_class,
+                get_prop_labels=get_prop_labels)
+            if get_prop_labels:
+                ground_truth, prop_labels = ground_truth
             if not_using_logits and not use_prob_vic:
                 preds_vic_inside = to_preds(preds_vic_inside)
 
@@ -290,9 +309,17 @@ def _get_preds_for_vic_and_adv(
     else:
         preds_vic, ground_truth = get_preds(
             loader_vic, models_vic, preload=preload,
-            multi_class=multi_class)
+            multi_class=multi_class,
+            get_prop_labels=get_prop_labels)
+        if get_prop_labels:
+            ground_truth, prop_labels = ground_truth
     assert np.all(ground_truth ==
                   ground_truth_repeat), "Val loader is shuffling data!"
+    if get_prop_labels:
+        assert np.all(prop_labels ==
+                      prop_labels_repeat), "Val loader is shuffling data!"
+    if get_prop_labels:
+        ground_truth = (ground_truth, prop_labels)
     return preds_vic, preds_adv, ground_truth, not_using_logits
 
 

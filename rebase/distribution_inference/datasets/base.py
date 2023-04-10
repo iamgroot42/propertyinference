@@ -3,12 +3,13 @@ from distribution_inference.defenses.active.shuffle import ShuffleDefense
 import numpy as np
 import torch as ch
 from torch.utils.data import DataLoader, Dataset
+from torch.utils.data.sampler import Sampler
 from tqdm import tqdm
 import torch.nn as nn
-from typing import List
+from typing import List, Optional
 import warnings
 
-from distribution_inference.utils import check_if_inside_cluster, warning_string, log, check_user
+from distribution_inference.utils import warning_string, log
 from distribution_inference.config import DatasetConfig, TrainConfig, WhiteBoxAttackConfig
 from distribution_inference.attacks.whitebox.utils import get_weight_layers
 import distribution_inference.datasets.utils as utils
@@ -16,14 +17,12 @@ import distribution_inference.datasets.utils as utils
 
 class Constants:
     splits = ["victim", "adv"]
-    if check_if_inside_cluster():
-        base_data_directory = "/project/uvasrg_paid/datasets/"
-        base_models_directory = "/project/uvasrg_paid/models/"
-        # base_data_directory = "/scratch/{}/datasets/".format(check_user())
-        # base_models_directory = "/scratch/{}/".format(check_user())
-    else:
-        base_data_directory = "/p/adversarialml/as9rw/datasets/"
-        base_models_directory = "/p/adversarialml/as9rw/"
+    base_data_directory = os.environ.get('DDI_DATA_DIRECTORY')
+    base_models_directory = os.environ.get('DDI_MODELS_DIRECTORY')
+    if base_data_directory is None:
+        raise ValueError("DDI_DATA_DIRECTORY not set!")
+    if base_models_directory is None:
+        raise ValueError("DDI_MODELS_DIRECTORY not set!")
 
 
 class DatasetInformation:
@@ -177,7 +176,8 @@ class CustomDatasetWrapper:
                     eval_shuffle: bool = False,
                     val_factor: float = 1,
                     num_workers: int = 0,
-                    prefetch_factor: int = 2):
+                    prefetch_factor: int = 2,
+                    train_sampler: Optional[Sampler] = None,):
         
         if self.shuffle_defense:
             # This function should return new loaders at every call
@@ -186,6 +186,7 @@ class CustomDatasetWrapper:
                 batch_size=batch_size,
                 shuffle=False,
                 num_workers=10,
+                sampler=train_sampler,
                 worker_init_fn=utils.worker_init_fn,
                 #pin_memory=True,
                 prefetch_factor=prefetch_factor
@@ -209,6 +210,10 @@ class CustomDatasetWrapper:
 
             self.mask_data_selection(mask_train, mask_val)
             self.set_augment_process_fn(process_fn)
+        
+        # If prefetch factor > 1, set num_workers > 0
+        if num_workers == 0:
+            prefetch_factor = None
                     
         # This function should return new loaders at every call
         train_loader = DataLoader(

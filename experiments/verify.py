@@ -118,7 +118,7 @@ if __name__ == "__main__":
                     multi_class=train_config.multi_class)
 
                 # Use 1 - acc (0-1 loss)
-                vacc.append((1-vacc2)/(1-vacc1))
+                vacc.append((1 - vacc2)/(1 - vacc1))
                 vloss.append(vloss2/vloss1)
 
             logger.add_result(ratio, loss_ratio=vloss, acc_ratio=vacc)

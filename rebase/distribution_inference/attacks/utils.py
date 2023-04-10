@@ -31,6 +31,7 @@ ATTACK_MAPPING = {
     "acc_ratio": "0-1 Loss Ratio",
     "loss_dif": "Loss Difference",
     "acc_dif": "0-1 Loss Difference",
+    "finetune": "Finetuning-based attack"
 }
 
 

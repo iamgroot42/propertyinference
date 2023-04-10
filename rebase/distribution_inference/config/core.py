@@ -27,6 +27,7 @@ class AdvTrainingConfig(Serializable):
     scale_by_255: bool = False
     """Scale given epsilon by 255?"""
 
+
 @dataclass
 class RegressionConfig(Serializable):
     """
@@ -49,6 +50,15 @@ class DPTrainingConfig(Serializable):
     """Physical batch size (scales in square in memory) when training"""
     max_grad_norm: float
     """Maximum gradient norm to clip to"""
+
+
+@dataclass
+class ContrastiveConfig(Serializable):
+    """
+        Hyper-parameters for contrastive training.
+    """
+    sample_rate: float = 1.0
+    """Sampling rate for pairs of samples"""
 
 
 @dataclass
@@ -147,6 +157,8 @@ class MiscTrainConfig(Serializable):
     """Configuration to be used for DP training"""
     shuffle_defense_config: Optional[ShuffleDefenseConfig] = None
     """Configuration to be usef for shuffle-based defense"""
+    contrastive_config: Optional[ContrastiveConfig] = None
+    """Configuration to be used for contrastive training"""
 
 
 @dataclass
@@ -200,6 +212,8 @@ class TrainConfig(Serializable):
     """Use learning-rate scheduler?"""
     verbose: Optional[bool] = False
     """Whether to print out per-classifier stats"""
+    quiet: Optional[bool] = False
+    """Completely suppress output?"""
     num_models: int = 1
     """Number of models to train"""
     offset: Optional[int] = 0
@@ -283,7 +297,7 @@ class BlackBoxAttackConfig(Serializable):
     "Start epoch to consider for single-update attack"
     End_epoch: Optional[int] = 20
     "End epoch to consider for single-update attack"
-    
+
     relative_threshold: Optional[bool] = False
     """Thresholds are relative to mean accuracy/logits"""
     loss_variant: Optional[bool] = False
@@ -297,11 +311,11 @@ class BlackBoxAttackConfig(Serializable):
     """Frac of pairs to use (if KL test)"""
     kl_voting: Optional[bool] = False
     """Use comparison instead of differences"""
-    generative_attack: Optional[GenerativeAttackConfig]=None
+    generative_attack: Optional[GenerativeAttackConfig] = None
     """Use generative attack?"""
     order_name: Optional[str] = None
     """Type of ordering to use"""
-    geo_mean:Optional[bool] = False
+    geo_mean: Optional[bool] = False
     regression_config: Optional[RegressionConfig] = None
 
     merlin_mean: Optional[float] = 0.0
@@ -321,6 +335,23 @@ class PermutationAttackConfig(Serializable):
     """Which kind of meta-classifier to use"""
     scale_invariance: Optional[bool] = False
     """Whether to use scale-invariant meta-classifier"""
+
+
+@dataclass
+class FinetuneAttackConfig(Serializable):
+    """
+        Configuration values for finetuning-based attack
+    """
+    inspection_parameter: str = field(choices=["grad_norm", "acc", "loss"])
+    """What parameter to track for making prediction"""
+    learning_rate: float
+    """Learning rate to use for finetuning"""
+    num_ft_epochs: Optional[int] = 1
+    """Number of epochs to finetune model for"""
+    strict_ft: Optional[bool] = False
+    """Strict finetune (last N layers) or whole model to be finetuned?"""
+    weight_decay: Optional[float] = 0.0
+    """Weight decay to use when fine-tuning"""
 
 
 @dataclass
@@ -372,6 +403,7 @@ class ComparisonAttackConfig(Serializable):
     """Epoch to use for 'after'"""
     num_models: int
     """Number of models to use for attack"""
+
 
 @dataclass
 class WhiteBoxAttackConfig(Serializable):
@@ -432,6 +464,10 @@ class WhiteBoxAttackConfig(Serializable):
     affinity_config: Optional[AffinityAttackConfig] = None
     """Configuration for affinity-based attacks"""
     comparison_config: Optional[ComparisonAttackConfig] = None
+    """Configuration for comparison-based attacks"""
+    finetune_config: Optional[FinetuneAttackConfig] = None
+    """Configuration for finetuning-based attacks"""
+
 
 @dataclass
 class FairnessEvalConfig(Serializable):
@@ -454,6 +490,7 @@ class FairnessEvalConfig(Serializable):
     """Keep models read on CPU?"""
     preload: Optional[bool] = False
     """Pre-load data while launching attack (faster, if memory available)?"""
+
 
 @dataclass
 class AttackConfig(Serializable):
@@ -493,7 +530,6 @@ class AttackConfig(Serializable):
     """Which epoch to target for victim. If not None, automatically use last epoch"""
 
 
-    
 @dataclass
 class UnlearningConfig(Serializable):
     """

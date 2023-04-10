@@ -1,20 +1,20 @@
 # Handle multiple workers
+import os
+from distribution_inference.defenses.active.shuffle import ShuffleDefense
+from distribution_inference.logging.core import TrainingResult
+from distribution_inference.utils import flash_utils
+from distribution_inference.config import TrainConfig, DatasetConfig, MiscTrainConfig
+from distribution_inference.training.utils import save_model
+from distribution_inference.training.core import train
+from distribution_inference.datasets.utils import get_dataset_wrapper, get_dataset_information
+from pathlib import Path
+from simple_parsing import ArgumentParser
+from distribution_inference.defenses.active.augment import AugmentDefense
+from distribution_inference.config.core import DPTrainingConfig, MiscTrainConfig
+import numpy as np
 import torch.multiprocessing
 torch.multiprocessing.set_sharing_strategy('file_system')
 
-import numpy as np
-from distribution_inference.config.core import DPTrainingConfig, MiscTrainConfig
-from distribution_inference.defenses.active.augment import AugmentDefense
-from simple_parsing import ArgumentParser
-from pathlib import Path
-from distribution_inference.datasets.utils import get_dataset_wrapper, get_dataset_information
-from distribution_inference.training.core import train
-from distribution_inference.training.utils import save_model
-from distribution_inference.config import TrainConfig, DatasetConfig, MiscTrainConfig
-from distribution_inference.utils import flash_utils
-from distribution_inference.logging.core import TrainingResult
-from distribution_inference.defenses.active.shuffle import ShuffleDefense
-import os
 
 
 EXTRA = False # False
@@ -64,7 +64,7 @@ if __name__ == "__main__":
                         str(config.offset)])
     # Define logger
     logger = TrainingResult(exp_name, train_config)
-   
+
     # If ShuffleDefense, get non-shuffled train loader, process, then get actual ones
     shuffle_defense = None
     if train_config.misc_config is not None:
@@ -81,14 +81,14 @@ if __name__ == "__main__":
 
     # Create new DS object
     ds = ds_wrapper_class(data_config,
-                         epoch=train_config.save_every_epoch,
-                         shuffle_defense=shuffle_defense,
-                         label_noise=train_config.label_noise)
+                          epoch=train_config.save_every_epoch,
+                          shuffle_defense=shuffle_defense,
+                          label_noise=train_config.label_noise)
 
     # train_ds, val_ds = ds.load_data()
     # y = []
     # for t in val_ds:
-        # y.append(t[1])
+    # y.append(t[1])
     # print("loaded")
     # y = np.array(y)
     # print(max(np.mean(y == 1), 1 - np.mean(y == 1)))
@@ -109,9 +109,9 @@ if __name__ == "__main__":
         # Get data loaders
         train_loader, val_loader = ds.get_loaders(
             batch_size=train_config.batch_size)
-        #print(1/(len(train_loader.dataset)*train_config.batch_size))
+        # print(1/(len(train_loader.dataset)*train_config.batch_size))
         # print(len(val_loader.dataset))
-        #exit(0)
+        # exit(0)
         plist = []
         # for t in train_loader:
         #     _,_,prop_l = t
@@ -123,9 +123,15 @@ if __name__ == "__main__":
             if data_config.name == "synthetic":
                 model = ds_info.get_model(model_arch=train_config.model_arch,
                                           n_inp=ds.dimensionality,
-                                          n_classes=ds.n_classes)
+                                          n_classes=ds.n_classes,
+                                          parallel=train_config.parallel)
+            elif data_config.name == "maadface":
+                model = ds_info.get_model(model_arch=train_config.model_arch,
+                                         n_people=ds.n_people,
+                                         parallel=train_config.parallel)
             else:
-                model = ds_info.get_model(model_arch=train_config.model_arch)
+                model = ds_info.get_model(model_arch=train_config.model_arch, 
+                                          parallel=train_config.parallel)
         else:
             model = ds_info.get_model_for_dp(
                 model_arch=train_config.model_arch)
@@ -134,11 +140,11 @@ if __name__ == "__main__":
         if EXTRA:
             # model, (vloss, vacc, extras) = train(model, (train_loader, val_loader),
             model, (vloss, vacc) = train(model, (train_loader, val_loader),
-                                                 train_config=train_config,
-                                                 extra_options={
+                                         train_config=train_config,
+                                         extra_options={
                 "curren_model_num": i + train_config.offset,
-                "save_path_fn": ds.get_save_path,},
-                # "more_metrics": EXTRA},
+                "save_path_fn": ds.get_save_path,
+                "more_metrics": EXTRA},
                 shuffle_defense=shuffle_defense)
             # logger.add_result(data_config.value, vloss, vacc, extras)
         else:
@@ -169,6 +175,7 @@ if __name__ == "__main__":
                 indices = (train_ids, test_ids)
 
             # Save model
+            # print(save_path)
             save_model(model, save_path, indices=indices)
 
             # Save logger

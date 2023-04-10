@@ -11,7 +11,7 @@ from distribution_inference.attacks.whitebox.affinity.models import AffinityMeta
 from distribution_inference.config import WhiteBoxAttackConfig, DatasetConfig, TrainConfig
 from distribution_inference.utils import warning_string, get_save_path, ensure_dir_exists
 from distribution_inference.models.core import BaseModel
-from distribution_inference.training.core import train, validate_epoch
+from distribution_inference.training.standard import train, validate_epoch
 
 
 class AffinityAttack(Attack):

@@ -38,7 +38,25 @@ def extract_adv_params(
     return adv_params
 
 
+class FocalLoss(ch.nn.Module):
+    def __init__(self, gamma = 2, eps = 1e-7):
+        super(FocalLoss, self).__init__()
+        self.gamma = gamma
+        self.eps = eps
+        self.ce = ch.nn.CrossEntropyLoss()
+
+    def forward(self, input, target):
+        logp = self.ce(input, target)
+        p = ch.exp(-logp)
+        loss = (1 - p) ** self.gamma * logp
+        return loss.mean()
+
+
 def save_model(model, path, indices=None):
+    # Check if wrapped in DataParallel
+    if isinstance(model, ch.nn.DataParallel) or hasattr(model, "module"):
+        model = model.module
+    
     if model.is_sklearn_model:
         if indices is not None:
             raise NotImplementedError("Saving sklearn model with indices is not implemented")

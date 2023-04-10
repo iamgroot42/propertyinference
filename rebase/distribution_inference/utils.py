@@ -4,6 +4,7 @@
 import os
 from colorama import Fore, Style
 import dataclasses
+import torch as ch
 
 
 class bcolors:
@@ -21,6 +22,12 @@ class bcolors:
 def log_string(x, ttype="log"):
     color_mapping = {"train": Fore.YELLOW, "val": Fore.GREEN}
     return color_mapping.get(ttype, Fore.MAGENTA) + x + Style.RESET_ALL
+
+
+def model_compile_supported():
+    if ch.__version__ >= "2":
+        return True
+    return False
 
 
 def log_statement(x, ttype="log"):
