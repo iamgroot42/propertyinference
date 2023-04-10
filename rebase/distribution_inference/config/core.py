@@ -344,10 +344,14 @@ class FinetuneAttackConfig(Serializable):
     """
     inspection_parameter: str = field(choices=["grad_norm", "acc", "loss"])
     """What parameter to track for making prediction"""
+    learning_rate: float
+    """Learning rate to use for finetuning"""
     num_ft_epochs: Optional[int] = 1
     """Number of epochs to finetune model for"""
     strict_ft: Optional[bool] = False
     """Strict finetune (last N layers) or whole model to be finetuned?"""
+    weight_decay: Optional[float] = 0.0
+    """Weight decay to use when fine-tuning"""
 
 
 @dataclass

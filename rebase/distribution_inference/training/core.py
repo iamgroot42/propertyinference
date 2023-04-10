@@ -8,15 +8,20 @@ def train(model, loaders, train_config: TrainConfig,
           extra_options: dict = None,
           shuffle_defense: ShuffleDefense = None):
     """
-    Train a model using the given loaders and train_config.
-    Should return a tuple of the form (test_loss, test_acc), and train model in-place.
-    Have respective imports for specific training methods to reduce overhead.
+        Train a model using the given loaders and train_config.
+        Should return a tuple of the form (test_loss, test_acc), and train model in-place.
+        Have respective imports for specific training methods to reduce overhead.
     """
-    if model.is_sklearn_model:
+    if train_config.parallel:
+        model_to_check = model.module
+    else:
+        model_to_check = model
+
+    if model_to_check.is_sklearn_model:
         from distribution_inference.training.basic import train as sklearn_train
         # SKlearn model- call .fit() directly
         return sklearn_train(model, loaders, train_config, extra_options)
-    elif model.is_graph_model:
+    elif model_to_check.is_graph_model:
         from distribution_inference.training.graph import train as gcn_train
         # Graph model - separate training
         return gcn_train(model, loaders, train_config, extra_options)

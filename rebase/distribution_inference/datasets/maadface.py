@@ -23,11 +23,10 @@ import pickle
 
 
 # TODO:
-# 1. Add support for different kinds of loaders- for contrastive training v/s normal training
-# 2. Add support for exclusion of certain people (list/singled out) based on input
-# <DONE> 3. Find SOTA contrastive training methods (and models) to implement for feature extractor
-# <DONE> 4. Define data splits with a) victim's set of people b) adv's set of people
-# 5. Collect images for target people from the internet in post-dataset era to have no overlap in images
+# 1. Add support for exclusion of certain people (list/singled out) based on input
+# <DONE> 2. Find SOTA contrastive training methods (and models) to implement for feature extractor
+# <DONE> 3. Define data splits with a) victim's set of people b) adv's set of people
+# 4. Collect images for target people from the internet in post-dataset era to have no overlap in images
 
 
 class DatasetInformation(base.DatasetInformation):
@@ -85,10 +84,10 @@ class DatasetInformation(base.DatasetInformation):
         else:
             raise NotImplementedError("Model architecture not supported")
 
-        if not cpu:
-            model = model.cuda()
         if parallel:
             model = nn.DataParallel(model)
+        if not cpu:
+            model = model.cuda()
         
         if model_compile_supported():
             model = ch.compile(model)
@@ -270,6 +269,7 @@ class MaadFaceWrapper(base.CustomDatasetWrapper):
         ])
 
         if self.augment:
+            # Add more augmentations?
             augment_transforms = [
                 transforms.RandomHorizontalFlip()
             ]
@@ -279,8 +279,10 @@ class MaadFaceWrapper(base.CustomDatasetWrapper):
         # Define (number of people to pick, number of test images per person)
         self._prop_wise_subsample_sizes = {
             "Male": {
-                "adv": (100, 30),
-                "victim": (200, 50)
+                # "adv": (100, 30),
+                # "victim": (5000, 50)
+                "adv": (1250, 30),
+                "victim": (5000, 50)
             }
         }
         self.n_people, self.n_in_test = self._prop_wise_subsample_sizes[self.prop][self.split]
@@ -365,8 +367,8 @@ class MaadFaceWrapper(base.CustomDatasetWrapper):
                     shuffle: bool = True,
                     eval_shuffle: bool = False,
                     val_factor: int = 2,
-                    num_workers: int = 24,
-                    prefetch_factor: int = 20,
+                    num_workers: int = 8,
+                    prefetch_factor: int = 4,
                     indexed_data=None):
         self.ds_train, self.ds_val = self.load_data()
 
@@ -399,7 +401,12 @@ class MaadFaceWrapper(base.CustomDatasetWrapper):
             model_arch = self.info_object.default_model
         if model_arch not in self.info_object.supported_models:
             raise ValueError(f"Model architecture {model_arch} not supported")
+
+        # Check if augmented version or not
+        if train_config.data_config.augment:
+            model_arch += "_aug"
         base_models_dir = os.path.join(base_models_dir, model_arch)
+
         save_path = os.path.join(base_models_dir, subfolder_prefix)
 
         # Make sure this directory exists

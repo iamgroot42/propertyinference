@@ -10,15 +10,6 @@ from distribution_inference.models.core import BaseModel
 
 
 class _ArcMarginProduct(nn.Module):
-    r"""Implement of large margin arc distance: :
-        Args:
-            in_features: size of each input sample
-            out_features: size of each output sample
-            s: norm of input feature
-            m: margin
-            cos(theta + m)
-        """
-
     def __init__(self, in_features: int,
                 out_features: int,
                 s: float = 30.0,
@@ -38,7 +29,7 @@ class _ArcMarginProduct(nn.Module):
         self.th = math.cos(math.pi - m)
         self.mm = math.sin(math.pi - m) * m
 
-    def forward(self, input, label):
+    def forward(self, input, label=None, train: bool = False,):
         # --------------------------- cos(theta) & phi(theta) ---------------------------
         cosine = F.linear(F.normalize(input), F.normalize(self.weight))
         sine = ch.sqrt((1.0 - ch.pow(cosine, 2)).clamp(0, 1))
@@ -48,13 +39,13 @@ class _ArcMarginProduct(nn.Module):
         else:
             phi = ch.where(cosine > self.th, phi, cosine - self.mm)
         # --------------------------- convert label to one-hot ---------------------------
-        # one_hot = ch.zeros(cosine.size(), requires_grad=True, device='cuda')
-        one_hot = ch.zeros(cosine.size(), device='cuda')
-        one_hot.scatter_(1, label.view(-1, 1).long(), 1)
-        # -------------ch.where(out_i = {x_i if condition_i else y_i) -------------
-        output = ch.where(one_hot == 1, phi, cosine)
+        if train:
+            one_hot = ch.zeros(cosine.size(), device=input.get_device())
+            one_hot.scatter_(1, label.view(-1, 1).long(), 1)
+            output = ch.where(one_hot == 1, phi, cosine)
+        else:
+            output = cosine
         output *= self.s
-        # print(output)
 
         return output
 
@@ -203,17 +194,24 @@ class ArcNet(BaseModel):
             self.metric_fc = _ArcMarginProduct(
                 n_out, self.n_people, s=30, m=0.5)
 
-    def forward(self, x: ch.Tensor, latent: int = None) -> ch.Tensor:
+    def forward(self, x: ch.Tensor,
+                only_embedding: bool=True,
+                latent: int = None,
+                get_both: bool = False) -> ch.Tensor:
         if type(x) is tuple:
             if self.n_people is None:
                 raise ValueError(
                     "n_people must be provided when loading model for generating predictions")
             # Class label also provided for contrastive learning
             x, y = x
-            feature = self.model(x)
-            output = self.metric_fc(feature, y)
-            return output
         else:
-            # Just need feature embedding
-            feature = self.model(x)
-            return feature
+            if self.training:
+                raise ValueError("Training mode requires class labels")
+            y = None
+        
+        feature = self.model(x)
+        output = self.metric_fc(feature, label=y, train=self.training)
+        if get_both:
+            return feature, output
+
+        return output

@@ -35,7 +35,7 @@ def get_gradient_norms(model, loader, binary=True, regression=False):
         if binary:
             y = y.float()
         y_hat = model(x)
-        loss = loss_fn(y_hat[:, 0], y)
+        loss = loss_fn(y_hat[:, 0], y) / x.shape[0]
         loss.backward()
         # Note which ones to be selected (need to do only once)
         if selected is None:

@@ -53,6 +53,10 @@ class FocalLoss(ch.nn.Module):
 
 
 def save_model(model, path, indices=None):
+    # Check if wrapped in DataParallel
+    if isinstance(model, ch.nn.DataParallel) or hasattr(model, "module"):
+        model = model.module
+    
     if model.is_sklearn_model:
         if indices is not None:
             raise NotImplementedError("Saving sklearn model with indices is not implemented")

@@ -9,7 +9,7 @@ import os
 
 from distribution_inference.training.utils import AverageMeter, generate_adversarial_input, save_model, EarlyStopper
 from distribution_inference.config import TrainConfig, AdvTrainingConfig
-from distribution_inference.utils import warning_string
+from distribution_inference.utils import warning_string, model_compile_supported
 
 
 def train_epoch(train_loader, model, criterion, optimizer, epoch,
@@ -229,6 +229,10 @@ def train(model, loaders, train_config: TrainConfig,
         more_metrics = extra_options["more_metrics"]
     else:
         more_metrics = False
+    
+    if model_compile_supported():
+        model = ch.compile(model)
+
     # Wrap with dataparallel if requested
     if train_config.parallel:
         model = ch.nn.DataParallel(model)

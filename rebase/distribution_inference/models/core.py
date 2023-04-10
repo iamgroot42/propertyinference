@@ -446,7 +446,7 @@ class MLPTwoLayer(BaseModel):
     def set_to_finetune(self):
         # Only finetune last linear layer
         for name, param in self.layers.named_parameters():
-            if not name.startswith("4."):
+            if not (name.startswith("4.") or name.startswith("3.")):
                 param.requires_grad = False
 
     def forward(self, x,
@@ -824,99 +824,99 @@ class LambdaLayer(nn.Module):
         return self.lambd(x)
 
 
-class CyConv2dFunction(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx, input, weight, workspace, stride=1, padding=0, dilation=1):
-        ctx.input = input
-        ctx.weight = weight
-        ctx.workspace = workspace
-        ctx.stride = stride
-        ctx.padding = padding
-        ctx.dilation = dilation
+# class CyConv2dFunction(torch.autograd.Function):
+#     @staticmethod
+#     def forward(ctx, input, weight, workspace, stride=1, padding=0, dilation=1):
+#         ctx.input = input
+#         ctx.weight = weight
+#         ctx.workspace = workspace
+#         ctx.stride = stride
+#         ctx.padding = padding
+#         ctx.dilation = dilation
 
-        output = CyConv2d_cuda.forward(
-            input, weight, workspace, stride, padding, dilation)
+#         output = CyConv2d_cuda.forward(
+#             input, weight, workspace, stride, padding, dilation)
 
-        return output
+#         return output
 
-    @staticmethod
-    def backward(ctx, grad_output):
-        grad_input, grad_weight = CyConv2d_cuda.backward(
-            ctx.input, grad_output.contiguous(), ctx.weight, ctx.workspace,
-            ctx.stride, ctx.padding, ctx.dilation)
+#     @staticmethod
+#     def backward(ctx, grad_output):
+#         grad_input, grad_weight = CyConv2d_cuda.backward(
+#             ctx.input, grad_output.contiguous(), ctx.weight, ctx.workspace,
+#             ctx.stride, ctx.padding, ctx.dilation)
 
-        return grad_input, grad_weight, None, None, None, None
-
-
-class CyConv2d(nn.Module):
-
-    """Workspace for Cy-Winograd algorithm"""
-    workspace = torch.zeros(1024 * 1024 * 1024 * 1,
-                            dtype=torch.float32).to(torch.device('cuda'))
-
-    def __init__(self, in_channels, out_channels, kernel_size,
-                 stride=1, padding=0, dilation=1):
-        super(CyConv2d, self).__init__()
-        self.in_channels = in_channels
-        self.out_channels = out_channels
-        self.kernel_size = kernel_size
-        self.stride = stride
-        self.padding = padding
-        self.dilation = dilation
-
-        self.weight = nn.Parameter(
-            torch.Tensor(out_channels, in_channels, kernel_size, kernel_size))
-        nn.init.xavier_uniform_(self.weight)
-
-    def forward(self, input):
-        output = CyConv2dFunction.apply(input,
-                                        self.weight,
-                                        CyConv2d.workspace,
-                                        self.stride,
-                                        self.padding,
-                                        self.dilation)
-        return output
-
-    def extra_repr(self):
-        return 'C={}, K={}, RS={}x{} str={}, pad={}, dil={}'.format(
-            self.in_channels, self.out_channels,
-            self.kernel_size, self.kernel_size,
-            self.stride, self.padding, self.dilation)
+#         return grad_input, grad_weight, None, None, None, None
 
 
-class CyResNet(BaseModel):
-    def __init__(self, block, num_blocks, dataset='mnist', num_classes=10):
-        super(CyResNet, self).__init__(is_conv=False)
-        self.in_planes = 16
+# class CyConv2d(nn.Module):
 
-        in_channels = 1 if dataset == 'mnist' else 3
+#     """Workspace for Cy-Winograd algorithm"""
+#     workspace = torch.zeros(1024 * 1024 * 1024 * 1,
+#                             dtype=torch.float32).to(torch.device('cuda'))
 
-        """CyConv2d instead of nn.Conv2d"""
-        self.conv1 = CyConv2d(
-            in_channels, 16, kernel_size=3, stride=1, padding=1)
-        self.bn1 = nn.BatchNorm2d(16)
-        self.layer1 = self._make_layer(block, 16, num_blocks[0], stride=1)
-        self.layer2 = self._make_layer(block, 32, num_blocks[1], stride=2)
-        self.layer3 = self._make_layer(block, 64, num_blocks[2], stride=2)
-        self.linear = nn.Linear(64, num_classes)
+#     def __init__(self, in_channels, out_channels, kernel_size,
+#                  stride=1, padding=0, dilation=1):
+#         super(CyConv2d, self).__init__()
+#         self.in_channels = in_channels
+#         self.out_channels = out_channels
+#         self.kernel_size = kernel_size
+#         self.stride = stride
+#         self.padding = padding
+#         self.dilation = dilation
 
-        self.apply(_weights_init)
+#         self.weight = nn.Parameter(
+#             torch.Tensor(out_channels, in_channels, kernel_size, kernel_size))
+#         nn.init.xavier_uniform_(self.weight)
 
-    def _make_layer(self, block, planes, num_blocks, stride):
-        strides = [stride] + [1]*(num_blocks-1)
-        layers = []
-        for stride in strides:
-            layers.append(block(self.in_planes, planes, stride))
-            self.in_planes = planes * block.expansion
+#     def forward(self, input):
+#         output = CyConv2dFunction.apply(input,
+#                                         self.weight,
+#                                         CyConv2d.workspace,
+#                                         self.stride,
+#                                         self.padding,
+#                                         self.dilation)
+#         return output
 
-        return nn.Sequential(*layers)
+#     def extra_repr(self):
+#         return 'C={}, K={}, RS={}x{} str={}, pad={}, dil={}'.format(
+#             self.in_channels, self.out_channels,
+#             self.kernel_size, self.kernel_size,
+#             self.stride, self.padding, self.dilation)
 
-    def forward(self, x):
-        out = F.relu(self.bn1(self.conv1(x)))
-        out = self.layer1(out)
-        out = self.layer2(out)
-        out = self.layer3(out)
-        out = F.avg_pool2d(out, out.size()[3])
-        out = out.view(out.size(0), -1)
-        out = self.linear(out)
-        return out
+
+# class CyResNet(BaseModel):
+#     def __init__(self, block, num_blocks, dataset='mnist', num_classes=10):
+#         super(CyResNet, self).__init__(is_conv=False)
+#         self.in_planes = 16
+
+#         in_channels = 1 if dataset == 'mnist' else 3
+
+#         """CyConv2d instead of nn.Conv2d"""
+#         self.conv1 = CyConv2d(
+#             in_channels, 16, kernel_size=3, stride=1, padding=1)
+#         self.bn1 = nn.BatchNorm2d(16)
+#         self.layer1 = self._make_layer(block, 16, num_blocks[0], stride=1)
+#         self.layer2 = self._make_layer(block, 32, num_blocks[1], stride=2)
+#         self.layer3 = self._make_layer(block, 64, num_blocks[2], stride=2)
+#         self.linear = nn.Linear(64, num_classes)
+
+#         self.apply(_weights_init)
+
+#     def _make_layer(self, block, planes, num_blocks, stride):
+#         strides = [stride] + [1]*(num_blocks-1)
+#         layers = []
+#         for stride in strides:
+#             layers.append(block(self.in_planes, planes, stride))
+#             self.in_planes = planes * block.expansion
+
+#         return nn.Sequential(*layers)
+
+#     def forward(self, x):
+#         out = F.relu(self.bn1(self.conv1(x)))
+#         out = self.layer1(out)
+#         out = self.layer2(out)
+#         out = self.layer3(out)
+#         out = F.avg_pool2d(out, out.size()[3])
+#         out = out.view(out.size(0), -1)
+#         out = self.linear(out)
+#         return out

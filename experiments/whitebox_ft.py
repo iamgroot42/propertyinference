@@ -7,6 +7,7 @@ from distribution_inference.attacks.whitebox.utils import get_attack
 from distribution_inference.config import DatasetConfig, AttackConfig, WhiteBoxAttackConfig, TrainConfig
 from distribution_inference.utils import flash_utils
 from distribution_inference.logging.core import AttackResult
+import random
 
 
 if __name__ == "__main__":
@@ -126,6 +127,8 @@ if __name__ == "__main__":
 
             # Make loader by combining models_vic_1 and models_vic_2
             models_vic_all = [(m, 0) for m in models_vic_1] + [(m, 1) for m in models_vic_2]
+            # Shuffle models_vic_all
+            random.shuffle(models_vic_all)
 
             # Execute attack
             chosen_accuracy = attacker_obj.execute_attack(

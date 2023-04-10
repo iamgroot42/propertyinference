@@ -43,6 +43,7 @@ class DatasetInformation(base.DatasetInformation):
 
         if not model.is_sklearn_model and not cpu:
             model = model.cuda()
+
         return model
 
     def get_model_for_dp(self, cpu: bool = False, model_arch: str = None) -> nn.Module:

@@ -123,12 +123,15 @@ if __name__ == "__main__":
             if data_config.name == "synthetic":
                 model = ds_info.get_model(model_arch=train_config.model_arch,
                                           n_inp=ds.dimensionality,
-                                          n_classes=ds.n_classes)
+                                          n_classes=ds.n_classes,
+                                          parallel=train_config.parallel)
             elif data_config.name == "maadface":
                 model = ds_info.get_model(model_arch=train_config.model_arch,
-                                         n_people=ds.n_people)
+                                         n_people=ds.n_people,
+                                         parallel=train_config.parallel)
             else:
-                model = ds_info.get_model(model_arch=train_config.model_arch)
+                model = ds_info.get_model(model_arch=train_config.model_arch, 
+                                          parallel=train_config.parallel)
         else:
             model = ds_info.get_model_for_dp(
                 model_arch=train_config.model_arch)
