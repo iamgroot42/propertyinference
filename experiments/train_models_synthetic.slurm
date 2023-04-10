@@ -4,12 +4,12 @@
 #SBATCH --ntasks=1
 
 # Allocation group
-#SBATCH -A uvasrg
+#SBATCH -A uvasrg_paid
 
 # Total memory requested on system
 # Maximum 4 nodes per job allowed
 # Maximum 32GB/core allowed
-#SBATCH --mem=24G
+#SBATCH --mem=4G
 
 # Partition of machine
 #SBATCH -p gpu

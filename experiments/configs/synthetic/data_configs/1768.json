@@ -1,0 +1,1 @@
+{"dimensionality": 512, "adv_noise_to_mean": 0.5, "noise_cov": 0.0, "noise_model": 0.0, "mean_range": 3.0, "cov": 3.0, "dist_diff_mean": 3.0, "dist_diff_std": 1.0, "layer": [16, 8], "diff_posteriors": false, "n_samples_adv": 1000, "n_samples_vic": 10000, "num_classes": 2}

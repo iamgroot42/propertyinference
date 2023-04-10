@@ -17,7 +17,7 @@ from distribution_inference.defenses.active.shuffle import ShuffleDefense
 import os
 
 
-EXTRA = True # False
+EXTRA = False # False
 if __name__ == "__main__":
     parser = ArgumentParser(add_help=False)
     parser.add_argument(
@@ -170,7 +170,6 @@ if __name__ == "__main__":
 
             # Save model
             save_model(model, save_path, indices=indices)
-            # exit(0)
 
             # Save logger
             logger.save()

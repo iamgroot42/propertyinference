@@ -239,7 +239,8 @@ class SyntheticDataset:
                 self.config.dimensionality, self.config.num_classes, self.config.layer)
             # Keep trying new inits as long as average label predictions not in acceptable range
             model_D1 = copy.deepcopy(model_D0)
-            if not self.diff_posteriors:
+            if self.diff_posteriors:
+                print("Different posteriors!")
                 model_D1 = self.__get_perturbed_model_copy(model_D1)
 
             # Initialize D0 for vic/adv
@@ -252,7 +253,7 @@ class SyntheticDataset:
             diff_1 = ch.abs(ch.mean(1. * y_1) - 0.5).item()
             diff_2 = ch.abs(ch.mean(1. * y_2) - 0.5).item()
             if (diff_1 < self.ACCEPTABLE_CUTOFF) and (diff_2 < self.ACCEPTABLE_CUTOFF):
-                print(ch.mean(1. * y_1), ch.mean(1. * y_2))
+                print(ch.mean(1. * y_1).item(), ch.mean(1. * y_2).item())
                 candidate_d0.append(self.distr_0.get_params())
                 candidate_d1.append(self.distr_1.get_params())
 
@@ -331,7 +332,7 @@ class SyntheticWrapper(base.CustomDatasetWrapper):
                          label_noise=label_noise,
                          shuffle_defense=shuffle_defense)
         self.distribution_config: SyntheticDatasetConfig = CONFIG_MAPPING.get(self.prop, None)
-        print(CONFIG_MAPPING)
+        # print(CONFIG_MAPPING)
         if self.distribution_config is None:
             raise ValueError(f"Requested config {self.prop} not available")
 

@@ -10,8 +10,12 @@ from tqdm import tqdm
 
 if __name__ == "__main__":
     # Specify parameter and its value that needs to be added to config
-    parameter = 'dist_diff_mean'
-    value = 0.5
+    pairings = [
+        # ('adv_noise_to_mean', 1.0)
+        # ('diff_posteriors', True),
+        ('layer', '256,64,16,4')
+        # ('noise_model', 2.0)
+    ]
     # Construct pandas object from records
     df = []
     start_with = 1 + max([int(x.split(".json")[0]) for x in os.listdir("configs/synthetic/data_configs/")])
@@ -25,13 +29,17 @@ if __name__ == "__main__":
     df.loc[:, 'layer'] = df['layer'].apply(lambda x: ','.join([str(i) for i in x]))
 
     # Desired attribute configuration
-    df[parameter] = value
+    for p, v in pairings:
+        df[p] = v
     df = df.drop_duplicates()
 
     # Convert back to list
     df.loc[:, 'layer'] = df['layer'].apply(lambda x: ([int(i) for i in x.split(',')]))
+    # Discard configs where underlying model dimensionality is not configured properly for posterior models
+    df = df[df.apply(lambda x: x['layer'][0] <= x['dimensionality'], axis=1)]
 
     # Parse records
+    print(f"Adding {len(df)} more configs!")
     for i, record in tqdm(enumerate(df.to_dict('records')), total=len(df)):
         config = SyntheticDatasetConfig.from_dict(record)
         savenum = start_with + i
