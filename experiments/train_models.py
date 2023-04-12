@@ -111,6 +111,7 @@ if __name__ == "__main__":
             batch_size=train_config.batch_size)
         # print(1/(len(train_loader.dataset)*train_config.batch_size))
         # print(len(val_loader.dataset))
+        # print(len(train_loader.dataset))
         # exit(0)
         plist = []
         # for t in train_loader:
@@ -128,6 +129,7 @@ if __name__ == "__main__":
             elif data_config.name == "maadface":
                 model = ds_info.get_model(model_arch=train_config.model_arch,
                                          n_people=ds.n_people,
+                                         for_training=True,
                                          parallel=train_config.parallel)
             else:
                 model = ds_info.get_model(model_arch=train_config.model_arch, 

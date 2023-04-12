@@ -10,6 +10,8 @@ from distribution_inference.attacks.blackbox.per_point import PerPointThresholdA
 from distribution_inference.attacks.blackbox.standard import LossAndThresholdAttack
 from distribution_inference.attacks.blackbox.core import PredictionsOnOneDistribution
 from distribution_inference.datasets.base import CustomDatasetWrapper
+from distribution_inference.datasets.utils import collect_gallery_images, get_match_scores
+
 from distribution_inference.attacks.blackbox.epoch_loss import Epoch_LossAttack
 from distribution_inference.attacks.blackbox.epoch_threshold import Epoch_ThresholdAttack
 from distribution_inference.attacks.blackbox.epoch_perpoint import Epoch_Perpoint
@@ -118,6 +120,101 @@ def get_graph_preds(ds, indices,
     return predictions, labels
 
 
+def _collect_embeddings(model, data, batch_size: int):
+    embds = []
+    for i in range(0, len(data), batch_size):
+        batch = data[i:i + batch_size]
+        embds.append(model(batch.cuda(), only_embedding=True).detach())
+    return ch.cat(embds, 0)
+
+
+def get_contrastive_preds(loader,
+                          gallery_data,
+                          models: List[nn.Module],
+                          preload: bool = False,
+                          verbose: bool = True,
+                          get_prop_labels: bool = False):
+    """
+        Get predictions for given models on given data.
+        Valid for contrastive models only. Uses gallery images
+        to compute probability distribution estimates for 
+        predictions on those gallery images.
+    """
+    predictions = []
+    ground_truth = []
+    prop_labels = []
+    inputs = []
+    batch_size = None
+    # Accumulate all data for given loader
+    for data in tqdm(loader, desc="Accumulating data"):
+        if len(data) == 2:
+            features, labels = data
+            if get_prop_labels:
+                raise ValueError("Loader does not return prop labels")
+        else:
+            features, labels, plabel = data
+            if batch_size is None:
+                batch_size = plabel.shape[0]
+            if get_prop_labels:
+                prop_labels.append(plabel.cpu().numpy())
+        ground_truth.append(labels.cpu().numpy())
+        if preload:
+            inputs.append(features.cuda())
+    ground_truth = np.concatenate(ground_truth, axis=0)
+    if get_prop_labels:
+        prop_labels = np.concatenate(prop_labels, axis=0)
+
+    # Get predictions for each model
+    iterator = models
+    if verbose:
+        iterator = tqdm(iterator, desc="Generating Predictions")
+    for model in iterator:
+        # Shift model to GPU
+        model = model.cuda()
+        # Make sure model is in evaluation mode
+        model.eval()
+        # Clear GPU cache
+        ch.cuda.empty_cache()
+
+        # Get gallery embeddings
+        # TODO: Too many images in gallery- batch it up to get embeddings
+        gallery_embeddings = _collect_embeddings(model, gallery_data, batch_size=batch_size)
+
+        with ch.no_grad():
+            predictions_on_model = []
+
+            # Skip multiple CPU-CUDA copy ops
+            if preload:
+                for data_batch in inputs:
+                    embedding = model(data_batch, only_embedding=True).detach()
+                    prediction = get_match_scores(embedding, gallery_embeddings)
+                    predictions_on_model.append(prediction.cpu())
+            else:
+                # Iterate through data-loader
+                for data in loader:
+                    data_points, labels, _ = data
+                    embedding = model(data_points.cuda(), only_embedding=True).detach()
+                    prediction = get_match_scores(
+                        embedding, gallery_embeddings)
+                    predictions_on_model.append(prediction.cpu())
+        predictions_on_model = ch.cat(predictions_on_model).numpy()
+        predictions.append(predictions_on_model)
+        # Shift model back to CPU
+        model = model.cpu()
+        del model
+        gc.collect()
+        ch.cuda.empty_cache()
+    predictions = np.stack(predictions, 0)
+    if preload:
+        del inputs
+    gc.collect()
+    ch.cuda.empty_cache()
+
+    if get_prop_labels:
+        ground_truth = (ground_truth, prop_labels)
+    return predictions, ground_truth
+
+
 def get_preds(loader, models: List[nn.Module],
               preload: bool = False,
               verbose: bool = True,
@@ -147,7 +244,7 @@ def get_preds(loader, models: List[nn.Module],
             if get_prop_labels:
                 raise ValueError("Loader does not return prop labels")
         else:
-            features, labels, plabel= data
+            features, labels, plabel = data
             if get_prop_labels:
                 prop_labels.append(plabel.cpu().numpy())
         ground_truth.append(labels.cpu().numpy())
@@ -257,7 +354,9 @@ def _get_preds_for_vic_and_adv(
         epochwise_version: bool = False,
         preload: bool = False,
         multi_class: bool = False,
-        get_prop_labels: bool = False):
+        get_prop_labels: bool = False,
+        n_people: int = None,
+        gallery_images: ch.Tensor = None):
 
     # Sklearn models do not support logits- take care of that
     use_prob_adv = models_adv[0].is_sklearn_model
@@ -265,12 +364,31 @@ def _get_preds_for_vic_and_adv(
         use_prob_vic = models_vic[0][0].is_sklearn_model
     else:
         use_prob_vic = models_vic[0].is_sklearn_model
+
+    # Check if contrastive model
+    # Also set not_use_logits to False, since scores will be 
+    # normalized
+    are_contrastive_models = False
+    if epochwise_version:
+        if models_vic[0][0].is_contrastive_model:
+            are_contrastive_models = True
+            use_prob_adv = True
+            use_prob_vic = True
+    else:
+        if models_vic[0].is_contrastive_model:
+            are_contrastive_models = True
+            use_prob_adv = True
+            use_prob_vic = True
+
+    # Check logic for using logits or probabilities
     not_using_logits = use_prob_adv or use_prob_vic
 
     if type(loader) == tuple:
         #  Same data is processed differently for vic/adcv
         loader_vic, loader_adv = loader
     else:
+        if are_contrastive_models:
+            raise ValueError("Contrastive models require adversary loaders for gallery images. Please check code")
         # Same loader
         loader_adv = loader
         loader_vic = loader
@@ -279,11 +397,23 @@ def _get_preds_for_vic_and_adv(
         exp = np.exp(x)
         return exp / (1 + exp)
 
+    if are_contrastive_models and gallery_images is None:
+        # Collect gallery images
+        gallery_images = collect_gallery_images(loader_adv, n_classes=n_people)
+    
     # Get predictions for adversary models and data
-    preds_adv, ground_truth_repeat = get_preds(
-        loader_adv, models_adv, preload=preload,
-        multi_class=multi_class,
-        get_prop_labels=get_prop_labels)
+    if are_contrastive_models:
+        preds_adv, ground_truth_repeat = get_contrastive_preds(
+                          loader_adv,
+                          gallery_images, models_adv,
+                          preload=preload,
+                          get_prop_labels=get_prop_labels)
+    else:
+        preds_adv, ground_truth_repeat = get_preds(
+            loader_adv, models_adv, preload=preload,
+            multi_class=multi_class,
+            get_prop_labels=get_prop_labels)
+
     if get_prop_labels:
         ground_truth_repeat, prop_labels_repeat = ground_truth_repeat
     if not_using_logits and not use_prob_adv:
@@ -291,6 +421,8 @@ def _get_preds_for_vic_and_adv(
 
     # Get predictions for victim models and data
     if epochwise_version:
+        if are_contrastive_models:
+            raise NotImplementedError("Contrastive models are not supported for epoch-wise mode (will add support later)")
         # Track predictions for each epoch
         preds_vic = []
         for models_inside_vic in tqdm(models_vic):
@@ -307,10 +439,17 @@ def _get_preds_for_vic_and_adv(
             # across epochs, not models
             preds_vic.append(preds_vic_inside)
     else:
-        preds_vic, ground_truth = get_preds(
-            loader_vic, models_vic, preload=preload,
-            multi_class=multi_class,
-            get_prop_labels=get_prop_labels)
+        if are_contrastive_models:
+            preds_vic, ground_truth = get_contrastive_preds(
+                loader_vic,
+                gallery_images, models_vic,
+                preload=preload,
+                get_prop_labels=get_prop_labels)
+        else:
+            preds_vic, ground_truth = get_preds(
+                loader_vic, models_vic, preload=preload,
+                multi_class=multi_class,
+                get_prop_labels=get_prop_labels)
         if get_prop_labels:
             ground_truth, prop_labels = ground_truth
     assert np.all(ground_truth ==
@@ -320,6 +459,9 @@ def _get_preds_for_vic_and_adv(
                       prop_labels_repeat), "Val loader is shuffling data!"
     if get_prop_labels:
         ground_truth = (ground_truth, prop_labels)
+    
+    if are_contrastive_models:
+        return preds_vic, preds_adv, ground_truth, not_using_logits, gallery_images
     return preds_vic, preds_adv, ground_truth, not_using_logits
 
 
@@ -361,7 +503,8 @@ def get_vic_adv_preds_on_distr(
         epochwise_version: bool = False,
         preload: bool = False,
         multi_class: bool = False,
-        make_processed_version: bool = False):
+        make_processed_version: bool = False,
+        gallery_images: ch.Tensor = None):
 
     # Check if models are graph-related
     are_graph_models = False
@@ -371,7 +514,17 @@ def get_vic_adv_preds_on_distr(
     else:
         if models_vic[0][0].is_graph_model:
             are_graph_models = True
+    
+    # Check if models are contrastive-learning based
+    are_contrastive_models = False
+    if epochwise_version:
+        if models_vic[0][0][0].is_contrastive_model:
+            are_contrastive_models = True
+    else:
+        if models_vic[0][0].is_contrastive_model:
+            are_contrastive_models = True
 
+    n_people = None
     if are_graph_models:
         # No concept of 'processed'
         data_ds, (_, test_idx) = ds_obj.get_loaders(batch_size=batch_size)
@@ -389,23 +542,37 @@ def get_vic_adv_preds_on_distr(
         else:
             # Get val data loader (should be same for all models, since get_loaders() gets new data for every call)
             loader_adv = loader_vic
+            if are_contrastive_models:
+                n_people = ds_obj.n_people
 
         # TODO: Use preload logic here to speed things even more
 
     # Get predictions for first set of models
-    preds_vic_1, preds_adv_1, ground_truth, not_using_logits = _get_preds_for_vic_and_adv(
+    return_obj = _get_preds_for_vic_and_adv(
         models_vic[0], models_adv[0],
         (loader_vic, loader_adv),
         epochwise_version=epochwise_version,
         preload=preload,
-        multi_class=multi_class)
+        multi_class=multi_class,
+        n_people=n_people,
+        gallery_images=gallery_images)
+    if are_contrastive_models:
+        preds_vic_1, preds_adv_1, ground_truth, not_using_logits, gallery_images = return_obj
+    else:
+        preds_vic_1, preds_adv_1, ground_truth, not_using_logits = return_obj
     # Get predictions for second set of models
-    preds_vic_2, preds_adv_2, _, _ = _get_preds_for_vic_and_adv(
+    return_obj = _get_preds_for_vic_and_adv(
         models_vic[1], models_adv[1],
         (loader_vic, loader_adv),
         epochwise_version=epochwise_version,
         preload=preload,
-        multi_class=multi_class)
+        multi_class=multi_class,
+        n_people=n_people,
+        gallery_images=gallery_images)
+    if are_contrastive_models:
+        preds_vic_2, preds_adv_2, _, _, _ = return_obj
+    else:
+        preds_vic_2, preds_adv_2, _, _ = return_obj
     adv_preds = PredictionsOnOneDistribution(
         preds_property_1=preds_adv_1,
         preds_property_2=preds_adv_2
@@ -414,6 +581,8 @@ def get_vic_adv_preds_on_distr(
         preds_property_1=preds_vic_1,
         preds_property_2=preds_vic_2
     )
+    if are_contrastive_models:
+        return adv_preds, vic_preds, ground_truth, not_using_logits, gallery_images
     return adv_preds, vic_preds, ground_truth, not_using_logits
 
 

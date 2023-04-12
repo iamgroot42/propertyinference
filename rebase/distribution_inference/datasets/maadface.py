@@ -75,6 +75,7 @@ class DatasetInformation(base.DatasetInformation):
     def get_model(self, parallel: bool = False, fake_relu: bool = False,
                   latent_focus=None, cpu: bool = False,
                   model_arch: str = None,
+                  for_training: bool = False,
                   n_people: int = None) -> nn.Module:
         if model_arch is None or model_arch == "None":
             model_arch = self.default_model
@@ -89,7 +90,7 @@ class DatasetInformation(base.DatasetInformation):
         if not cpu:
             model = model.cuda()
         
-        if model_compile_supported():
+        if for_training and model_compile_supported():
             model = ch.compile(model)
 
         return model
@@ -279,8 +280,6 @@ class MaadFaceWrapper(base.CustomDatasetWrapper):
         # Define (number of people to pick, number of test images per person)
         self._prop_wise_subsample_sizes = {
             "Male": {
-                # "adv": (100, 30),
-                # "victim": (5000, 50)
                 "adv": (1250, 30),
                 "victim": (5000, 50)
             }
@@ -390,7 +389,6 @@ class MaadFaceWrapper(base.CustomDatasetWrapper):
         subfolder_prefix = os.path.join(
             self.split, self.prop, str(self.ratio)
         )
-
         if not (train_config.misc_config and train_config.misc_config.contrastive_config):
             raise ValueError("Only contrastive training is supported for this dataset")
         else:
@@ -418,5 +416,6 @@ class MaadFaceWrapper(base.CustomDatasetWrapper):
     def load_model(self, path: str,
                    on_cpu: bool = False,
                    model_arch: str = None) -> nn.Module:
-        model = self.info_object.get_model(cpu=on_cpu, model_arch=model_arch)
+        model = self.info_object.get_model(
+            cpu=on_cpu, model_arch=model_arch, n_people=self.n_people)
         return load_model(model, path, on_cpu=on_cpu)

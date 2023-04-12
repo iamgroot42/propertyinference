@@ -195,7 +195,7 @@ class ArcNet(BaseModel):
                 n_out, self.n_people, s=30, m=0.5)
 
     def forward(self, x: ch.Tensor,
-                only_embedding: bool=True,
+                only_embedding: bool=False,
                 latent: int = None,
                 get_both: bool = False) -> ch.Tensor:
         if type(x) is tuple:
@@ -210,6 +210,9 @@ class ArcNet(BaseModel):
             y = None
         
         feature = self.model(x)
+        if only_embedding:
+            return feature
+
         output = self.metric_fc(feature, label=y, train=self.training)
         if get_both:
             return feature, output

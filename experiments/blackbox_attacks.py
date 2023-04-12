@@ -12,6 +12,8 @@ from distribution_inference.config import DatasetConfig, AttackConfig, BlackBoxA
 from distribution_inference.utils import flash_utils
 from distribution_inference.logging.core import AttackResult
 
+import torch
+torch.multiprocessing.set_sharing_strategy('file_system')
 
 if __name__ == "__main__":
     parser = ArgumentParser(add_help=False)
@@ -83,7 +85,9 @@ if __name__ == "__main__":
             model_arch=attack_config.victim_model_arch,
             custom_models_path=models_1_path)
         if type(models_vic_1) == tuple:
-                models_vic_1 = models_vic_1[0]
+            models_vic_1 = models_vic_1[0]
+
+        are_contrastive_models = models_vic_1[0].is_contrastive_model
 
         # For each value (of property) asked to experiment with
         for prop_value in attack_config.values:
@@ -129,7 +133,7 @@ if __name__ == "__main__":
                     models_adv_2 = models_adv_2[0]
 
                 # Get victim and adv predictions on loaders for first ratio
-                preds_adv_on_1, preds_vic_on_1, ground_truth_1, not_using_logits = get_vic_adv_preds_on_distr(
+                return_obj = get_vic_adv_preds_on_distr(
                     models_vic=(models_vic_1, models_vic_2),
                     models_adv=(models_adv_1, models_adv_2),
                     ds_obj=ds_adv_1,
@@ -139,8 +143,12 @@ if __name__ == "__main__":
                     multi_class=bb_attack_config.multi_class,
                     make_processed_version=attack_config.adv_processed_variant
                 )
+                if are_contrastive_models:
+                    preds_adv_on_1, preds_vic_on_1, ground_truth_1, not_using_logits, gallery_images =  return_obj
+                else:
+                    preds_adv_on_1, preds_vic_on_1, ground_truth_1, not_using_logits =  return_obj
                 # Get victim and adv predictions on loaders for second ratio
-                preds_adv_on_2, preds_vic_on_2, ground_truth_2, _ = get_vic_adv_preds_on_distr(
+                return_obj = get_vic_adv_preds_on_distr(
                     models_vic=(models_vic_1, models_vic_2),
                     models_adv=(models_adv_1, models_adv_2),
                     ds_obj=ds_adv_2,
@@ -148,8 +156,13 @@ if __name__ == "__main__":
                     epochwise_version=attack_config.train_config.save_every_epoch,
                     preload=bb_attack_config.preload,
                     multi_class=bb_attack_config.multi_class,
-                    make_processed_version=attack_config.adv_processed_variant
+                    make_processed_version=attack_config.adv_processed_variant,
+                    gallery_images=gallery_images
                 )
+                if are_contrastive_models:
+                    preds_adv_on_2, preds_vic_on_2, ground_truth_2, _, _ = return_obj
+                else:
+                    preds_adv_on_2, preds_vic_on_2, ground_truth_2, _ = return_obj
                 # Wrap predictions to be used by the attack
                 preds_adv = PredictionsOnDistributions(
                     preds_on_distr_1=preds_adv_on_1,
