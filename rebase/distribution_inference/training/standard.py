@@ -221,15 +221,24 @@ def validate_epoch(val_loader, model, criterion,
 
 
 def train(model, loaders, train_config: TrainConfig,
-                     input_is_list: bool = False,
-                     # this might have an entry that coresponds to data augmentation, if so then apply the image transforms from cycnn
-                     extra_options: dict = None,
-                     shuffle_defense: ShuffleDefense = None):
+          input_is_list: bool = False,
+          extra_options: dict = None,
+          shuffle_defense: ShuffleDefense = None):
     if extra_options != None and "more_metrics" in extra_options.keys():
         more_metrics = extra_options["more_metrics"]
     else:
         more_metrics = False
     
+    if extra_options != None and "track_epoch_losses" in extra_options.keys():
+        track_epoch_losses = extra_options["track_epoch_losses"]
+    else:
+        track_epoch_losses = False
+    
+    if extra_options != None and "extra_loader" in extra_options.keys():
+        extra_loader = extra_options["extra_loader"]
+    else:
+        extra_loader = None
+
     if model_compile_supported():
         model = ch.compile(model)
 
@@ -297,6 +306,7 @@ def train(model, loaders, train_config: TrainConfig,
         adv_config.epsilon_iter = 2.5 * adv_config.epsilon / adv_config.iters
 
     best_model, best_loss = None, np.inf
+    train_losses, val_losses, extra_losses = [], [], []
     for epoch in iterator:
         tloss, tacc = train_epoch(train_loader, model,
                                   criterion, optimizer, epoch,
@@ -333,6 +343,22 @@ def train(model, loaders, train_config: TrainConfig,
                                          input_is_list=input_is_list,
                                          regression=train_config.regression,
                                          multi_class=train_config.multi_class)
+
+        if track_epoch_losses:
+            train_losses.append(tloss)
+            val_losses.append(vloss)
+        
+        if extra_loader is not None:
+            # Extra loader provided, compute metric on this data and track for each epoch
+            extra_loss, _ = validate_epoch(extra_loader,
+                                           model, criterion,
+                                           verbose=train_config.verbose,
+                                           adv_config=adv_config,
+                                           expect_extra=train_config.expect_extra,
+                                           input_is_list=input_is_list,
+                                           regression=train_config.regression,
+                                           multi_class=train_config.multi_class)
+            extra_losses.append(extra_loss)
 
         # LR Scheduler, if requested
         if lr_scheduler is not None:
@@ -438,7 +464,15 @@ def train(model, loaders, train_config: TrainConfig,
     if train_config.get_best:
         if more_metrics:
             return best_model, (test_loss, test_acc, extra_metrics_te)
+        if track_epoch_losses:
+            if extra_loader is not None:
+                return best_model, (test_loss, test_acc, (train_losses, val_losses, extra_losses))
+            return best_model, (test_loss, test_acc, (train_losses, val_losses))
         return best_model, (test_loss, test_acc)
     if more_metrics:
         return test_loss, test_acc, extra_metrics_te
+    if track_epoch_losses:
+        if extra_loader is not None:
+            return test_loss, test_acc, (train_losses, val_losses, extra_losses)
+        return test_loss, test_acc, (train_losses, val_losses)
     return test_loss, test_acc

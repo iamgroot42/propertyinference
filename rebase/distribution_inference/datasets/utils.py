@@ -4,7 +4,7 @@ from tqdm import tqdm
 import pandas as pd
 import torch as ch
 
-from distribution_inference.datasets import new_census, celeba, boneage,census, texas, arxiv, synthetic, maadface
+from distribution_inference.datasets import new_census, celeba, boneage,census, texas, arxiv, synthetic, maadface, celeba_person
 
 DATASET_INFO_MAPPING = {
     "new_census": new_census.DatasetInformation,
@@ -14,7 +14,8 @@ DATASET_INFO_MAPPING = {
     "texas": texas.DatasetInformation,
     "arxiv": arxiv.DatasetInformation,
     "synthetic": synthetic.DatasetInformation,
-    "maadface": maadface.DatasetInformation
+    "maadface": maadface.DatasetInformation,
+    "celeba_person": celeba_person.DatasetInformation
 }
 
 DATASET_WRAPPER_MAPPING = {
@@ -25,7 +26,8 @@ DATASET_WRAPPER_MAPPING = {
     "texas": texas.TexasWrapper,
     "arxiv": arxiv.ArxivWrapper,
     "synthetic": synthetic.SyntheticWrapper,
-    "maadface": maadface.MaadFaceWrapper
+    "maadface": maadface.MaadFaceWrapper,
+    "celeba_person": celeba_person.CelebaPersonWrapper
 }
 
 

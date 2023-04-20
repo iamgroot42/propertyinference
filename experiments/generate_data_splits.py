@@ -1,9 +1,9 @@
 from distribution_inference.datasets.utils import get_dataset_wrapper, get_dataset_information
 from distribution_inference.config import DatasetConfig
 
-di = get_dataset_information("maadface")()
+di = get_dataset_information("celeba_person")()
 # di.generate_victim_adversary_splits(adv_ratio=0.25, test_ratio=0.15)
-di.generate_victim_adversary_splits(adv_ratio=0.2, test_ratio=0.15)
+di.generate_victim_adversary_splits(adv_ratio=0.2)
 # ds = get_dataset_wrapper("maadface")
 # x = ds(None)
 # z = x.ds.get_data("victim", 1.0, "ethnicity")

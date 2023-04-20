@@ -352,6 +352,8 @@ class FinetuneAttackConfig(Serializable):
     """Strict finetune (last N layers) or whole model to be finetuned?"""
     weight_decay: Optional[float] = 0.0
     """Weight decay to use when fine-tuning"""
+    sample_size : Optional[int] = None
+    """Number of samples to use while finetuning model. If None, use as much as would be used to train shadow models."""
 
 
 @dataclass

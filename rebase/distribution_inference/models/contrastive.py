@@ -60,7 +60,7 @@ class _IRBlock(nn.Module):
     expansion = 1
 
     def __init__(self, inplanes, planes, stride=1, downsample=None, use_se=True):
-        super(_IRBlock, self).__init__()
+        super().__init__()
         self.bn0 = nn.BatchNorm2d(inplanes)
         self.conv1 = _conv3x3(inplanes, inplanes)
         self.bn1 = nn.BatchNorm2d(inplanes)
@@ -110,6 +110,56 @@ class _SEBlock(nn.Module):
         y = self.avg_pool(x).view(b, c)
         y = self.fc(y).view(b, c, 1, 1)
         return x * y
+
+
+class Sungetal(nn.Module):
+    """
+        Based on the model described in Figure 2 of https://arxiv.org/pdf/1711.06025.pdf
+        Also used in FACE-AUDITOR
+    """
+    def __init__(self, n_out: int):
+        super().__init__()
+        self.layer1 = self._block(True, 3)
+        self.layer2 = self._block(True, 64)
+        self.layer3 = self._block(False, 64)
+        self.layer4 = self._block(False, 64)
+        self.layer5 = self._block(True, 64)
+        self.layer6 = self._block(True, 64)
+        self.fc = nn.Linear(64 * 3 * 3, n_out)
+        self.bn2 = nn.BatchNorm1d(n_out)
+        self.dropout = nn.Dropout()
+
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.xavier_normal_(m.weight)
+            elif isinstance(m, nn.BatchNorm2d) or isinstance(m, nn.BatchNorm1d):
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
+            elif isinstance(m, nn.Linear):
+                nn.init.xavier_normal_(m.weight)
+                nn.init.constant_(m.bias, 0)
+
+    def _block(self, use_maxpool: bool, in_planes: int=64, padding: int = 1):
+        layers = [nn.Conv2d(in_planes, 64, kernel_size=3, padding=padding),
+                  nn.BatchNorm2d(64),
+                  nn.ReLU(inplace=True)]
+        if use_maxpool:
+            layers.append(nn.MaxPool2d(kernel_size=2, stride=2))
+        return nn.Sequential(*layers)
+
+    def forward(self, x):
+        x = self.layer1(x)
+        x = self.layer2(x)
+        x = self.layer3(x)
+        x = self.layer4(x)
+        x = self.layer5(x)
+        x = self.layer6(x)
+        # x = self.dropout(x)# See if dropout helps later
+        x = x.view(x.size(0), -1)
+        x = self.fc(x)
+        x = self.bn2(x)
+
+        return x
 
 
 class ResNetFace(nn.Module):
@@ -180,17 +230,15 @@ class ResNetFace(nn.Module):
         return x
 
 
-class ArcNet(BaseModel):
+class GenericArcFace(BaseModel):
     def __init__(self,
+                 model: nn.Module, 
                  n_out: int = 512,
-                 use_se: bool = True,
                  n_people: int = None):
         super().__init__(is_conv=True, is_contrastive_model=True)
-        self.model = ResNetFace(
-            _IRBlock, [2, 2, 2, 2], n_out=n_out, use_se=use_se)
+        self.model = model
         self.n_people = n_people
         if self.n_people is not None:
-            # , easy_margin=opt.easy_margin)
             self.metric_fc = _ArcMarginProduct(
                 n_out, self.n_people, s=30, m=0.5)
 
@@ -218,3 +266,21 @@ class ArcNet(BaseModel):
             return feature, output
 
         return output
+
+
+class ArcFaceResnet(GenericArcFace):
+    def __init__(self,
+                 n_out: int = 512,
+                 use_se: bool = True,
+                 n_people: int = None):
+        model = ResNetFace(
+            _IRBlock, [2, 2, 2, 2], n_out=n_out, use_se=use_se)
+        super().__init__(model, n_out=n_out, n_people=n_people)
+
+
+class ArcFaceSungetal(GenericArcFace):
+    def __init__(self,
+                 n_out: int = 512,
+                 n_people: int = None):
+        model = Sungetal(n_out=n_out)
+        super().__init__(model, n_out=n_out, n_people=n_people)

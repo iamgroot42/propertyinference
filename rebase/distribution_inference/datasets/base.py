@@ -139,7 +139,8 @@ class CustomDatasetWrapper:
                  skip_data: bool = False,
                  label_noise: float = 0.0,
                  is_graph_data: bool = False,
-                 shuffle_defense: ShuffleDefense = None,):
+                 shuffle_defense: ShuffleDefense = None,
+                 uses_extra_loader_for_gallery: bool = False):
         """
             self.ds_train and self.ds_val should be set to
             datasets to be used to train and evaluate.
@@ -157,6 +158,7 @@ class CustomDatasetWrapper:
         self.prune = data_config.prune
         self.is_graph_data = is_graph_data
         self.adv_use_frac = data_config.adv_use_frac
+        self.uses_extra_loader_for_gallery = uses_extra_loader_for_gallery
 
         # Either set ds_train and ds_val here
         # Or set them inside get_loaders
@@ -236,6 +238,18 @@ class CustomDatasetWrapper:
             prefetch_factor=prefetch_factor
         )
 
+        if self.uses_extra_loader_for_gallery:
+            gallery_loader = DataLoader(
+                self.ds_val_gallery,
+                batch_size=batch_size * val_factor,
+                shuffle=eval_shuffle,
+                num_workers=num_workers,
+                worker_init_fn=utils.worker_init_fn,
+                #pin_memory=True,
+                prefetch_factor=prefetch_factor
+            )
+            test_loader = (test_loader, gallery_loader)
+
         return train_loader, test_loader
 
     def prepare_processed_data(self, loader):
@@ -300,6 +314,9 @@ class CustomDatasetWrapper:
     
     def set_augment_process_fn(self, data):
         self.ds_train.set_augment_process_fn(data)
+    
+    def override_num_samples(self, num_samples: int):
+        self.cwise_samples = num_samples
 
     def _get_model_paths(self,
                          train_config: TrainConfig,

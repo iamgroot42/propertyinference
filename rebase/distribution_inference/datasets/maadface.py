@@ -81,7 +81,7 @@ class DatasetInformation(base.DatasetInformation):
             model_arch = self.default_model
 
         if model_arch == "arcface_resnet":
-            model = models_contrastive.ArcNet(n_people=n_people)
+            model = models_contrastive.ArcFaceResnet(n_people=n_people)
         else:
             raise NotImplementedError("Model architecture not supported")
 

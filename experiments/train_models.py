@@ -126,7 +126,7 @@ if __name__ == "__main__":
                                           n_inp=ds.dimensionality,
                                           n_classes=ds.n_classes,
                                           parallel=train_config.parallel)
-            elif data_config.name == "maadface":
+            elif data_config.name in ["maadface", "celeba_person"]:
                 model = ds_info.get_model(model_arch=train_config.model_arch,
                                          n_people=ds.n_people,
                                          for_training=True,
