@@ -1,0 +1,46 @@
+{
+    "name": "victim_2_mlp_4_0.5_0",
+    "start time": "2023-01-23 21:39:50.427076",
+    "train_config": {
+        "data_config": {
+            "name": "synthetic",
+            "prop": "31",
+            "value": 0.9,
+            "split": "victim",
+            "drop_senstive_cols": true,
+            "scale": 1.0,
+            "augment": false,
+            "classify": null,
+            "cwise_samples": null,
+            "squeeze": false,
+            "processed_variant": true,
+            "prune": 0,
+            "adv_use_frac": 1.0
+        },
+        "epochs": 300,
+        "learning_rate": 0.001,
+        "batch_size": 500,
+        "misc_config": null,
+        "lr_scheduler": null,
+        "verbose": false,
+        "num_models": 250,
+        "offset": 0,
+        "weight_decay": 0.0001,
+        "get_best": true,
+        "cpu": false,
+        "expect_extra": true,
+        "save_every_epoch": false,
+        "extra_info": null,
+        "regression": false,
+        "multi_class": false,
+        "label_noise": 0,
+        "model_arch": "mlp_4",
+        "parallel": false,
+        "early_stopping": {
+            "patience": 5,
+            "min_delta": 0.002,
+            "verbose": true
+        }
+    },
+    "save time": "2023-01-23 22:11:03.883636"
+}

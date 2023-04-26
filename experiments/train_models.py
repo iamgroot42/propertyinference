@@ -16,8 +16,8 @@ import torch.multiprocessing
 torch.multiprocessing.set_sharing_strategy('file_system')
 
 
-EXTRA = False  # True
 
+EXTRA = False # False
 if __name__ == "__main__":
     parser = ArgumentParser(add_help=False)
     parser.add_argument(
@@ -179,7 +179,6 @@ if __name__ == "__main__":
             # Save model
             # print(save_path)
             save_model(model, save_path, indices=indices)
-            # exit(0)
 
             # Save logger
             logger.save()
