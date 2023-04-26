@@ -139,8 +139,7 @@ class CustomDatasetWrapper:
                  skip_data: bool = False,
                  label_noise: float = 0.0,
                  is_graph_data: bool = False,
-                 shuffle_defense: ShuffleDefense = None,
-                 uses_extra_loader_for_gallery: bool = False):
+                 shuffle_defense: ShuffleDefense = None):
         """
             self.ds_train and self.ds_val should be set to
             datasets to be used to train and evaluate.
@@ -158,7 +157,7 @@ class CustomDatasetWrapper:
         self.prune = data_config.prune
         self.is_graph_data = is_graph_data
         self.adv_use_frac = data_config.adv_use_frac
-        self.uses_extra_loader_for_gallery = uses_extra_loader_for_gallery
+        self.relation_config = data_config.relation_config
 
         # Either set ds_train and ds_val here
         # Or set them inside get_loaders
@@ -179,7 +178,8 @@ class CustomDatasetWrapper:
                     val_factor: float = 1,
                     num_workers: int = 0,
                     prefetch_factor: int = 2,
-                    train_sampler: Optional[Sampler] = None,):
+                    train_sampler: Optional[Sampler] = None,
+                    pin_memory: bool = False,):
         
         if self.shuffle_defense:
             # This function should return new loaders at every call
@@ -224,7 +224,7 @@ class CustomDatasetWrapper:
             shuffle=shuffle,
             num_workers=num_workers,
             worker_init_fn=utils.worker_init_fn,
-            #pin_memory=True,
+            pin_memory=pin_memory,
             prefetch_factor=prefetch_factor
         )
 
@@ -234,21 +234,9 @@ class CustomDatasetWrapper:
             shuffle=eval_shuffle,
             num_workers=num_workers,
             worker_init_fn=utils.worker_init_fn,
-            #pin_memory=True,
+            pin_memory=pin_memory,
             prefetch_factor=prefetch_factor
         )
-
-        if self.uses_extra_loader_for_gallery:
-            gallery_loader = DataLoader(
-                self.ds_val_gallery,
-                batch_size=batch_size * val_factor,
-                shuffle=eval_shuffle,
-                num_workers=num_workers,
-                worker_init_fn=utils.worker_init_fn,
-                #pin_memory=True,
-                prefetch_factor=prefetch_factor
-            )
-            test_loader = (test_loader, gallery_loader)
 
         return train_loader, test_loader
 

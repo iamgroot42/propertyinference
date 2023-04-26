@@ -278,7 +278,7 @@ def collect_gallery_images(loader, n_classes):
     return images
 
 
-def get_match_scores(batch_embeds, gallery_embeds):
+def get_match_scores(batch_embeds, gallery_embeds, apply_softmax: bool = True):
     """
         Compute match scores (probabilities) via softmax-based normalization
         of cosine similarity products between batch_embeds and gallery_embeds.
@@ -291,6 +291,7 @@ def get_match_scores(batch_embeds, gallery_embeds):
          csim = ch.nn.functional.cosine_similarity(b, gallery_embeds)
          simulated_preds.append(csim)
     simulated_preds = ch.stack(simulated_preds, dim=0)
-    # Normalize with softmax
-    simulated_preds = ch.softmax(simulated_preds, dim=1)
+    if apply_softmax:
+        # Normalize with softmax
+        simulated_preds = ch.softmax(simulated_preds, dim=1)
     return simulated_preds

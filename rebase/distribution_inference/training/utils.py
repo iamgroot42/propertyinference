@@ -2,7 +2,6 @@ import torch as ch
 import pickle
 import numpy as np
 from cleverhans.future.torch.attacks.projected_gradient_descent import projected_gradient_descent
-
 from distribution_inference.config import AttackConfig, EarlyStoppingConfig
 
 

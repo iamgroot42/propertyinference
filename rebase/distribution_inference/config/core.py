@@ -59,6 +59,23 @@ class ContrastiveConfig(Serializable):
     """
     sample_rate: float = 1.0
     """Sampling rate for pairs of samples"""
+    proto_validate: bool = False
+    """Use Proto-Net based protocol for validation?"""
+
+
+@dataclass
+class RelationConfig(Serializable):
+    """
+        Configuration for relation net training
+    """
+    n_way: int
+    """Number of classes to use"""
+    k_shot: int
+    """Number of samples per class to use"""
+    num_query_train: int
+    """Number of query samples to use for train"""
+    num_query_test: int
+    """Number of query samples to use for test/val"""
 
 
 @dataclass
@@ -111,6 +128,8 @@ class DatasetConfig(Serializable):
     """Prune graph by removing nodes? (only valid for arXiv dataset)"""
     adv_use_frac: Optional[float] = 1.0
     """What percentage of data should be used to train adv models (out of the quota reserved)"""
+    relation_config: Optional[RelationConfig] = None
+    """Configuration to be used for relation net training"""
 
 
 @dataclass

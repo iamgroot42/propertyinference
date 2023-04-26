@@ -32,7 +32,11 @@ def train(model, loaders, train_config: TrainConfig,
     elif train_config.misc_config and train_config.misc_config.contrastive_config:
         from distribution_inference.training.contrastive import train as contrastive_train
         # Train model for contrastive learning
-        return contrastive_train(model, loaders, train_config, input_is_list, extra_options)
+        return contrastive_train(model, loaders, train_config)
+    elif train_config.data_config.relation_config is not None:
+        from distribution_inference.training.relation_net import train as relationnet_train
+        # Train relation-net model
+        return relationnet_train(model, loaders, train_config)
     else:
         # Normal GD training
         from distribution_inference.training.standard import train as train_without_dp

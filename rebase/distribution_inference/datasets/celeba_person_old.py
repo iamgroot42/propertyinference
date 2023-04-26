@@ -16,7 +16,6 @@ import distribution_inference.models.contrastive as models_contrastive
 from distribution_inference.config import TrainConfig, DatasetConfig
 from distribution_inference.training.utils import load_model
 from distribution_inference.utils import model_compile_supported
-from distribution_inference.datasets._contrastive_utils import NWays, KShots, LoadData, RemapLabels, TaskDataset, MetaDataset
 
 
 class DatasetInformation(base.DatasetInformation):
@@ -29,8 +28,9 @@ class DatasetInformation(base.DatasetInformation):
                          models_path="models_celeba_person/80_20_split",
                          properties=["Subject_MI"],
                          values={"Subject_MI": ratios},
-                         supported_models=["scnn_relation"],
-                         default_model="scnn_relation",
+                         supported_models=[
+                             "arcface_sungetal", "arcface_resnet"],
+                         default_model="arcface_sungetal",
                          epoch_wise=epoch_wise)
         self.holdout_people = 100 # Number of people in holdout set (always part of victim training)
         self.audit_per_person = 10 # Number of images per person in audit set
@@ -45,8 +45,10 @@ class DatasetInformation(base.DatasetInformation):
         if model_arch is None or model_arch == "None":
             model_arch = self.default_model
 
-        if model_arch == "scnn_relation":
-            model = models_contrastive.SCNNFaceAudit(n_people=n_people)
+        if model_arch == "arcface_sungetal":
+            model = models_contrastive.ArcFaceSungetal(n_people=n_people)
+        elif model_arch == "arcface_resnet":
+            model = models_contrastive.ArcFaceResnet(n_people=n_people)
         else:
             raise NotImplementedError("Model architecture not supported")
 
@@ -225,9 +227,6 @@ class CelebAPerson(base.CustomDataset):
     def __len__(self):
         return self.num_samples
 
-    def get_labels_list(self):
-        return self.labels_list
-
     def __getitem__(self, idx):
         # TODO: Third argument keeps track of 'member or not'
 
@@ -254,7 +253,8 @@ class CelebaPersonWrapper(base.CustomDatasetWrapper):
         super().__init__(data_config,
                          skip_data=skip_data,
                          label_noise=label_noise,
-                         shuffle_defense=shuffle_defense)
+                         shuffle_defense=shuffle_defense,
+                         uses_extra_loader_for_gallery=True)
         self.info_object = DatasetInformation(epoch_wise=epoch)
 
         if self.split == "adv" and self.ratio == 1:
@@ -266,7 +266,7 @@ class CelebaPersonWrapper(base.CustomDatasetWrapper):
         # if self.classify not in self.info_object.preserve_properties:
         #     raise ValueError("Specified label not available for images")
 
-        resize_to = 96 #128 #96
+        resize_to = 128 #96
         train_transforms = [
             transforms.Resize((resize_to, resize_to)),
             transforms.ToTensor(),
@@ -402,6 +402,9 @@ class CelebaPersonWrapper(base.CustomDatasetWrapper):
             person_of_interest_indicator[-len(filenames_always_train):] = 1
             labels_train = np.concatenate((labels_train, labels_always_train))
 
+        # For test, define gallery-non-gallery split
+        (filenames_test_gallery, labels_test_gallery), (filenames_test_use, labels_test_use) = self._gallery_split(filenames_test, labels_test)
+
         # Create datasets (let DS objects handle mapping of labels)
         ds_train = CelebAPerson(
             filenames_train, labels_train,
@@ -409,52 +412,31 @@ class CelebaPersonWrapper(base.CustomDatasetWrapper):
             transform=self.train_transforms,
             person_of_interest_indicator=person_of_interest_indicator)
 
+        # _gallery_split ensures that the two sets (gallery and test) have consistent labels
         ds_test = CelebAPerson(
-            filenames_test, labels_test,
-            remap_classes=True,
+            filenames_test_use, labels_test_use,
+            remap_classes=False,
+            transform=self.test_transforms)
+        ds_test_gallery = CelebAPerson(
+            filenames_test_gallery, labels_test_gallery,
+            remap_classes=False,
             transform=self.test_transforms)
 
-        # Wrapper
-        ds_train = MetaDataset(ds_train)
-        ds_test  = MetaDataset(ds_test)
-
-        self.train_transforms_task = [
-            NWays(ds_train, self.relation_config.n_way),
-            KShots(ds_train, self.relation_config.num_query_train + self.relation_config.k_shot),
-            LoadData(ds_train),
-            RemapLabels(ds_train)
-        ]
-        self.test_transforms_task = [
-            NWays(ds_test, self.relation_config.n_way),
-            KShots(ds_test, self.relation_config.num_query_test + self.relation_config.k_shot),
-            LoadData(ds_test),
-            RemapLabels(ds_test)
-        ]
-
-        test_num_task = 80
-        train_dset = TaskDataset(ds_train,
-                                 task_transforms=self.train_transforms_task)
-        test_dset  = TaskDataset(ds_test,
-                                 task_transforms=self.test_transforms_task,
-                                 num_tasks=test_num_task)
-
-        return train_dset, test_dset
+        return ds_train, ds_test, ds_test_gallery
 
     def get_loaders(self, batch_size: int,
                     shuffle: bool = True,
                     eval_shuffle: bool = False,
-                    val_factor: int = 1,
-                    num_workers: int = 1,
+                    val_factor: int = 2,
+                    num_workers: int = 8,
                     prefetch_factor: int = 2,
-                    pin_memory: bool=True,
                     indexed_data=None):
-        self.ds_train, self.ds_val = self.load_data()
+        self.ds_train, self.ds_val, self.ds_val_gallery = self.load_data()
 
         return super().get_loaders(batch_size, shuffle=shuffle,
                                    eval_shuffle=eval_shuffle,
                                    val_factor=val_factor,
                                    num_workers=num_workers,
-                                   pin_memory=pin_memory,
                                    prefetch_factor=prefetch_factor)
 
     def get_save_dir(self, train_config: TrainConfig, model_arch: str) -> str:
@@ -462,8 +444,10 @@ class CelebaPersonWrapper(base.CustomDatasetWrapper):
         subfolder_prefix = os.path.join(
             self.split, self.prop, str(self.ratio)
         )
-        if not (train_config.data_config.relation_config):
-            raise ValueError("Only relation-net training is supported for this dataset")
+        if not (train_config.misc_config and train_config.misc_config.contrastive_config):
+            raise ValueError("Only contrastive training is supported for this dataset")
+        else:
+            contrastive_config = train_config.misc_config.contrastive_config
 
         # Standard logic
         if model_arch == "None" or model_arch is None:
