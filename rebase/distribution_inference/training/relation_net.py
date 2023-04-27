@@ -77,7 +77,7 @@ def train_epoch(loader, model, optimizer, epoch: int,
     model.train()
     tot_loss, tot_acc, tot_items = 0, 0, 0
     # The loader here has len(1) but we sample from it multiple times
-    train_num_task = 20
+    train_num_task = 100
 
     iterator = range(train_num_task)
     if verbose:
@@ -129,7 +129,7 @@ def validate_epoch(loader, model,
     if verbose:
         iterator = tqdm(iterator, desc="Validation")
         
-    for batch in loader:
+    for batch in iterator:
         data_input = batch[0].cuda()
         lbls = batch[1].cuda()
         _, loss, acc = fast_adapt(

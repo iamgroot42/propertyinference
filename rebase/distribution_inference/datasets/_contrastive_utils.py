@@ -9,11 +9,9 @@ import random
 import collections
 import functools
 import copy
-import array
 from torch.utils.data._utils import collate
 import itertools
 import numpy as np
-from tqdm import tqdm
 
 
 class MetaDataset(Dataset):

@@ -76,6 +76,8 @@ class RelationConfig(Serializable):
     """Number of query samples to use for train"""
     num_query_test: int
     """Number of query samples to use for test/val"""
+    test_num_task: int
+    """Number of times to sample from validation/test data"""
 
 
 @dataclass

@@ -35,7 +35,6 @@ class DatasetInformation(base.DatasetInformation):
         self.holdout_people = 100 # Number of people in holdout set (always part of victim training)
         self.audit_per_person = 10 # Number of images per person in audit set
         self.min_per_person = 20 # Minimum number of images per person in training set
-        self.n_gallery_test = 5 # Number of images in gallery for each person in test set
 
     def get_model(self, parallel: bool = False, fake_relu: bool = False,
                   latent_focus=None, cpu: bool = False,
@@ -95,7 +94,7 @@ class DatasetInformation(base.DatasetInformation):
         # Idea 1: Always to to infer a random self.holdout_people people from training
         # Idea 2: Always include the same self.holdout_people random people in all victim model training,
         # and infer their presence (more streamlined approach)
-        # Adversary uses its 20 split to perform shadow training and also use identities 'not part of training'
+        # Adversary uses its 20 split to perform shadow training and/or launching attacks
         # Load metadata files
         splits = self._get_splits()
         ids = self._get_identities()
@@ -108,12 +107,10 @@ class DatasetInformation(base.DatasetInformation):
         train_map = {p: np.sum(ids[train_mask] == p) for p in np.unique(ids[train_mask])}
         test_map = {p: np.sum(ids[test_mask] == p) for p in np.unique(ids[test_mask])}
 
-        # Discard people from train_map where < self.min_per_person images per person present
+        # Discard people where < self.min_per_person images per person present
         train_map_keep = [k for k, v in train_map.items() if v >= self.min_per_person]
         train_mask = np.logical_and(train_mask, np.isin(ids, train_map_keep))
-
-        # Discard people from test_map where < self.n_gallery_test images per person present
-        test_map_keep = [k for k, v in test_map.items() if v > self.n_gallery_test]
+        test_map_keep = [k for k, v in test_map.items() if v > self.min_per_person]
         test_mask = np.logical_and(test_mask, np.isin(ids, test_map_keep))
 
         # Splits on test data
@@ -125,7 +122,7 @@ class DatasetInformation(base.DatasetInformation):
             ids[train_mask], adv_ratio=adv_ratio)
     
         # Pick random self.holdout_people from train_victim_people
-        # These are the people that will be used as targets for ingerring membership in victim model training
+        # These are the people that will be used as targets for inferring membership in victim model training
         # For 'always used' pick out of people that have at least self.audit_per_person + self.min_per_person images
         # So that after reserving self.audit_per_person images for auditing, we have at least self.min_per_person images for training
         train_victim_always_used = []
@@ -290,8 +287,8 @@ class CelebaPersonWrapper(base.CustomDatasetWrapper):
 
         # Define number of people to pick for train, test
         self._prop_wise_subsample_sizes = {
-            "adv": (800, 30),
-            "victim": (4000, 500)
+            "adv": (800, 50),
+            "victim": (3500, 300)
         }
         self.n_people, self.n_people_test = self._prop_wise_subsample_sizes[self.split]
 
@@ -300,6 +297,9 @@ class CelebaPersonWrapper(base.CustomDatasetWrapper):
             wanted_people = f.read().splitlines()
         wanted_people = [int(x) for x in wanted_people]
         # Sub-sample desired number of people
+        if n_people > len(wanted_people):
+            raise ValueError(
+                f"Number of people requested ({n_people}) is greater than number of people in file ({len(wanted_people)})")
         wanted_people = np.random.choice(
             wanted_people, n_people, replace=False)
 
@@ -314,38 +314,6 @@ class CelebaPersonWrapper(base.CustomDatasetWrapper):
         
         # Essentially (path, label)
         return filenames, identities
-
-    def _gallery_split(self, filenames, labels):
-        """
-            Takes test-faces and splits them into gallery and non-gallery
-            images. Gallery images are used to compute embeddings, which are then compared
-            with a given test image to make class prediction.
-        """
-        unique_labels = np.unique(labels)
-        filenames_gallery, labels_gallery, filenames_non_gallery, labels_non_gallery = [], [], [], []
-        for u in unique_labels:
-            matching_files = filenames[labels == u]
-            # Sort (do not want randomness here)
-            matching_files = np.sort(matching_files)
-
-            if len(matching_files) <= self.info_object.n_gallery_test:
-                raise ValueError(f"Not enough images for gallery: {self.info_object.n_gallery_test} requested, {len(matching_files)} available")
-
-            filenames_gallery.append(matching_files[:self.info_object.n_gallery_test])
-            labels_gallery.append(np.array([u] * self.info_object.n_gallery_test))
-            filenames_non_gallery.append(matching_files[self.info_object.n_gallery_test:])
-            labels_non_gallery.append(np.array([u] * (len(matching_files) - self.info_object.n_gallery_test)))
-
-        filenames_gallery = np.concatenate(filenames_gallery)
-        labels_gallery = np.concatenate(labels_gallery)
-        filenames_non_gallery = np.concatenate(filenames_non_gallery)
-        labels_non_gallery = np.concatenate(labels_non_gallery)
-
-        mapping = {p: i for i, p in enumerate(unique_labels)}
-        labels_gallery = np.array([mapping[p] for p in labels_gallery])
-        labels_non_gallery = np.array([mapping[p] for p in labels_non_gallery])
-
-        return (filenames_gallery, labels_gallery), (filenames_non_gallery, labels_non_gallery)
 
     def _load_data_for_always_included_people(self, always_used_people_path: str):
         paths, labels = [], []
@@ -402,7 +370,13 @@ class CelebaPersonWrapper(base.CustomDatasetWrapper):
             person_of_interest_indicator[-len(filenames_always_train):] = 1
             labels_train = np.concatenate((labels_train, labels_always_train))
 
+        # Keep note of people (identifiers) used in training and validation for this specific instance
+        self.people_in_train =  np.unique(labels_train)
+        self.people_in_test = np.unique(labels_test)
+
         # Create datasets (let DS objects handle mapping of labels)
+        # Could probably skip the hassle of 'remap_classes' below (since RemapLabels does it anyway)
+        # but no harm in keeping it
         ds_train = CelebAPerson(
             filenames_train, labels_train,
             remap_classes=True,
@@ -431,12 +405,11 @@ class CelebaPersonWrapper(base.CustomDatasetWrapper):
             RemapLabels(ds_test)
         ]
 
-        test_num_task = 80
         train_dset = TaskDataset(ds_train,
                                  task_transforms=self.train_transforms_task)
         test_dset  = TaskDataset(ds_test,
                                  task_transforms=self.test_transforms_task,
-                                 num_tasks=test_num_task)
+                                 num_tasks=self.relation_config.test_num_task)
 
         return train_dset, test_dset
 
