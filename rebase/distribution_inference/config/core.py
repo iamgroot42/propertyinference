@@ -263,6 +263,8 @@ class TrainConfig(Serializable):
     """Use multiple GPUs for model training?"""
     early_stopping: Optional[EarlyStoppingConfig] = None
     """Use early stopping?"""
+    save_indices_used: Optional[bool] = False
+    """Save extra information (indices of train/test data used)?"""
 
 
 @dataclass

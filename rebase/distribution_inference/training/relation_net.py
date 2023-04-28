@@ -4,16 +4,13 @@ from copy import deepcopy
 
 from torch.optim.lr_scheduler import StepLR
 
-from distribution_inference.training.utils import FocalLoss
 from distribution_inference.config import TrainConfig
-from distribution_inference.datasets.utils import get_match_scores
 import torch.nn.functional as F
 
 from distribution_inference.utils import warning_string
 
 
 from tqdm import tqdm
-import os
 
 
 def _accuracy(predictions, targets, get_preds: bool = False):
@@ -40,6 +37,10 @@ def fast_adapt(model, data, labels, ways: int, shot: int, query_num: int, get_pr
     samples = data[support_indices]
     batches = data[query_indices]
     batch_labels = labels[query_indices]
+
+    # 1. Collect mean embedding ("prototype") for each class based on embedding
+    # 2. Use relation model to get "similarity" between each query image and each class prototype
+    # 3. Use similarity to predict class of each query image    
 
     # calculate features
     sample_features = model(samples, embedding_mode=True)  # 5x64*5*5

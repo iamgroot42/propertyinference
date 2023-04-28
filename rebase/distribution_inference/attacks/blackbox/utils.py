@@ -128,6 +128,50 @@ def _collect_embeddings(model, data, batch_size: int):
     return ch.cat(embds, 0)
 
 
+def get_relation_preds(support_images, query_images, models: List[nn.Module], verbose: bool = True):
+    """
+        Extract model output values as similarities between images from the support set (target person)
+        and each query image, for each of the given models.
+    """
+    iterator = models
+    if verbose:
+        iterator = tqdm(iterator, desc="Generating Predictions")
+    for model in iterator:
+        # samples here are query images
+        # batches here are support images, with '0' referring to the person of interest
+        # and are expected to be sorted, with the first one corresponding to the person of interest
+
+        # 1. Collect mean embedding ("prototype") for each class based on embedding
+        # 2. Use relation model to get "similarity" between each query image and each class prototype
+        # 3. Use similarity to predict class of each query image
+
+        # compute features for query images
+        query_features = model(query_images, embedding_mode=True)
+        n_queries = query_features.shape[0]
+
+        # compute features for support people
+        concatenated_relations = []
+        for person_images in support_images:
+            sample_features = model(person_images, embedding_mode=True)
+            # Aggregate to get "prototype"
+            sample_features = ch.sum(sample_features, 0).unsqueeze(0) # Later replace with mean
+            sample_features = sample_features.repeat(n_queries, 1, 1, 1)
+            concatenated_relations.append(ch.cat((sample_features, query_features), 1))
+        concatenated_relations = ch.cat(concatenated_relations, 0)
+        concatenated_relations = ch.transpose(concatenated_relations, 0, 1)
+        # Results in (n_query, n_people, feat_1 * 2, feat_2, feat_3)
+        relation_pairs = concatenated_relations.view(-1,
+                                                     concatenated_relations.shape[2],
+                                                     concatenated_relations.shape[3],
+                                                     concatenated_relations.shape[4])
+
+        # Relations is of shape (n_queries, n_people)
+        relations = model(relation_pairs, embedding_mode=False).view(
+            n_queries, -1)
+        # Can be thought of as "logits" if working with some attack here
+        return relations
+
+
 def get_contrastive_preds(loader,
                           gallery_data,
                           models: List[nn.Module],

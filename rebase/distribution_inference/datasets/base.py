@@ -172,6 +172,21 @@ class CustomDatasetWrapper:
     def get_used_indices(self):
         raise NotImplementedError("Dataset does not implement get_used_indices")
 
+    def load_specified_data(self, people_ids: List):
+        raise NotImplementedError("Dataset does not implement load_specified_data")
+    
+    def get_specified_loader(self, indices: List,
+                             batch_size: int,
+                             shuffle: bool = True,):
+        ds_use = self.load_specified_data(indices)
+        loader_use = DataLoader(
+            ds_use,
+            batch_size=batch_size,
+            shuffle=shuffle,
+            worker_init_fn=utils.worker_init_fn
+        )
+        return loader_use
+
     def get_loaders(self, batch_size: int,
                     shuffle: bool = True,
                     eval_shuffle: bool = False,

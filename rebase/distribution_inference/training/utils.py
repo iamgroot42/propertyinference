@@ -62,16 +62,30 @@ def save_model(model, path, indices=None):
         with open(path, 'wb') as f:
             pickle.dump(model, f)
     else:
+        model_state_dict = model.state_dict()
+        # If compiled model, save the original model
+        if all([k.startswith("_orig_mod") for k in model_state_dict.keys()]):
+            model_state_dict = model_state_dict["_orig_mod"]
         if indices is not None:
             state_dict = {
-                "actual_model": model.state_dict(),
+                "actual_model": model_state_dict,
                 "train_ids": indices[0],
                 "test_ids": indices[1],
             }
         else:
-            state_dict = model.state_dict()
+            state_dict = model_state_dict
 
         ch.save(state_dict, path)
+
+
+def handle_compiled_weights(state_dict):
+    """
+        Handle the case where all keys have a prefix "_orig_mod"
+        and remove this prefix from all keys.
+    """
+    if all([k.startswith("_orig_mod") for k in state_dict.keys()]):
+        state_dict = {k[10:]: v for k, v in state_dict.items()}
+    return state_dict
 
 
 def load_model(model, path, on_cpu: bool = False):
@@ -86,12 +100,13 @@ def load_model(model, path, on_cpu: bool = False):
             model_dict = ch.load(path, map_location=map_location)
             if "actual_model" in model_dict:
                 # Information about training data also stored; return
-                model.load_state_dict(model_dict["actual_model"])
+                model.load_state_dict(
+                    handle_compiled_weights(model_dict["actual_model"]))
                 train_ids = model_dict["train_ids"]
                 test_ids = model_dict["test_ids"]
                 return model, (train_ids, test_ids)
             else:
-                model.load_state_dict(ch.load(path, map_location=map_location))
+                model.load_state_dict(handle_compiled_weights(ch.load(path, map_location=map_location)))
     except:
         raise Exception("Could not load model from {}".format(path))
     return model

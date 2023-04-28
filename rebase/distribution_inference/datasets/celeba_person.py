@@ -302,16 +302,21 @@ class CelebaPersonWrapper(base.CustomDatasetWrapper):
                 f"Number of people requested ({n_people}) is greater than number of people in file ({len(wanted_people)})")
         wanted_people = np.random.choice(
             wanted_people, n_people, replace=False)
+        return self._pick_these_people(wanted_people)
 
+    def _pick_these_people(self, these_people: List[int]):
+        """
+            Pick specified people and their data
+        """
         identities = self.info_object._get_identities()
         splits = self.info_object._get_splits()
         filenames = np.array(splits.index.tolist())
 
         # Pick filenames where identity is in wanted_people
-        mask = np.isin(identities, wanted_people)
+        mask = np.isin(identities, these_people)
         filenames = filenames[mask]
         identities = identities[mask]
-        
+
         # Essentially (path, label)
         return filenames, identities
 
@@ -334,7 +339,18 @@ class CelebaPersonWrapper(base.CustomDatasetWrapper):
         labels = labels[labels == wanted_person]
         return paths, labels
 
-    def load_data(self):
+    def load_specified_data(self, people_ids: List[int]):
+        # Adjust number of people to sample from pool
+        filenames, labels = self._pick_these_people(people_ids)
+        
+        ds_use = CelebAPerson(
+            filenames, labels,
+            remap_classes=True,
+            transform=self.test_transforms)
+
+        return ds_use
+
+    def load_data(self, primed_for_training: bool = True):
         # Use relevant file split information
         people_list_train = os.path.join(
             self.info_object.base_data_dir,
@@ -371,7 +387,7 @@ class CelebaPersonWrapper(base.CustomDatasetWrapper):
             labels_train = np.concatenate((labels_train, labels_always_train))
 
         # Keep note of people (identifiers) used in training and validation for this specific instance
-        self.people_in_train =  np.unique(labels_train)
+        self.people_in_train = np.unique(labels_train)
         self.people_in_test = np.unique(labels_test)
 
         # Create datasets (let DS objects handle mapping of labels)
@@ -387,8 +403,10 @@ class CelebaPersonWrapper(base.CustomDatasetWrapper):
             filenames_test, labels_test,
             remap_classes=True,
             transform=self.test_transforms)
+        
+        if not primed_for_training:
+            return ds_train, ds_test
 
-        # Wrapper
         ds_train = MetaDataset(ds_train)
         ds_test  = MetaDataset(ds_test)
 
@@ -406,12 +424,15 @@ class CelebaPersonWrapper(base.CustomDatasetWrapper):
         ]
 
         train_dset = TaskDataset(ds_train,
-                                 task_transforms=self.train_transforms_task)
+                                task_transforms=self.train_transforms_task)
         test_dset  = TaskDataset(ds_test,
-                                 task_transforms=self.test_transforms_task,
-                                 num_tasks=self.relation_config.test_num_task)
+                                task_transforms=self.test_transforms_task,
+                                num_tasks=self.relation_config.test_num_task)
 
         return train_dset, test_dset
+
+    def get_used_indices(self):
+        return self.people_in_train, self.people_in_test
 
     def get_loaders(self, batch_size: int,
                     shuffle: bool = True,
@@ -420,8 +441,9 @@ class CelebaPersonWrapper(base.CustomDatasetWrapper):
                     num_workers: int = 1,
                     prefetch_factor: int = 2,
                     pin_memory: bool=True,
+                    primed_for_training: bool=True,
                     indexed_data=None):
-        self.ds_train, self.ds_val = self.load_data()
+        self.ds_train, self.ds_val = self.load_data(primed_for_training=primed_for_training)
 
         return super().get_loaders(batch_size, shuffle=shuffle,
                                    eval_shuffle=eval_shuffle,
