@@ -48,7 +48,7 @@ def fast_adapt(model, data, labels, ways: int, shot: int, query_num: int, get_pr
                                             sample_features.shape[2],
                                             sample_features.shape[3])
     feat_dim = sample_features.shape[2]
-    sample_features = ch.sum(sample_features, 1).squeeze(1)
+    sample_features = ch.mean(sample_features, 1).squeeze(1)
     batch_features = model(batches, embedding_mode=True)  # 20x64*5*5
 
     # calculate relations

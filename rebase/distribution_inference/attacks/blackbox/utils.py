@@ -128,7 +128,9 @@ def _collect_embeddings(model, data, batch_size: int):
     return ch.cat(embds, 0)
 
 
-def get_relation_preds(support_images, query_images, models: List[nn.Module], verbose: bool = True):
+def get_relation_preds(support_images, query_images,
+                       models: List[nn.Module],
+                       verbose: bool = True):
     """
         Extract model output values as similarities between images from the support set (target person)
         and each query image, for each of the given models.
@@ -154,13 +156,13 @@ def get_relation_preds(support_images, query_images, models: List[nn.Module], ve
         for person_images in support_images:
             sample_features = model(person_images, embedding_mode=True)
             # Aggregate to get "prototype"
-            sample_features = ch.sum(sample_features, 0).unsqueeze(0) # Later replace with mean
+            sample_features = ch.mean(sample_features, 0).unsqueeze(0)
             sample_features = sample_features.repeat(n_queries, 1, 1, 1)
             concatenated_relations.append(ch.cat((sample_features, query_features), 1))
-        concatenated_relations = ch.cat(concatenated_relations, 0)
+        concatenated_relations = ch.stack(concatenated_relations, 0)
         concatenated_relations = ch.transpose(concatenated_relations, 0, 1)
         # Results in (n_query, n_people, feat_1 * 2, feat_2, feat_3)
-        relation_pairs = concatenated_relations.view(-1,
+        relation_pairs = concatenated_relations.reshape(-1,
                                                      concatenated_relations.shape[2],
                                                      concatenated_relations.shape[3],
                                                      concatenated_relations.shape[4])
