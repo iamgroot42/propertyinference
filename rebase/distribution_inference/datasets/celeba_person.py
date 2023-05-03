@@ -24,15 +24,17 @@ class DatasetInformation(base.DatasetInformation):
         ratios = [0, 1]
         # 0 (False) here means specified members not present in training data
         # 1 (True) here means specified members present in training data
+        holdout_people = 100
+        props = [str(x) for x in range(self.holdout_people)]
         super().__init__(name="Celeb-A Person",
                          data_path="celeba",
                          models_path="models_celeba_person/80_20_split",
-                         properties=["Subject_MI"],
-                         values={"Subject_MI": ratios},
+                         properties=props,
+                         values={k: ratios for k in props},
                          supported_models=["scnn_relation"],
                          default_model="scnn_relation",
                          epoch_wise=epoch_wise)
-        self.holdout_people = 100 # Number of people in holdout set (always part of victim training)
+        self.holdout_people = holdout_people # Number of people in holdout set (always part of victim training)
         self.audit_per_person = 10 # Number of images per person in audit set
         self.min_per_person = 20 # Minimum number of images per person in training set
 
@@ -430,6 +432,17 @@ class CelebaPersonWrapper(base.CustomDatasetWrapper):
                                 num_tasks=self.relation_config.test_num_task)
 
         return train_dset, test_dset
+
+    def get_non_members(self, used_ids: List[int]):
+        # Use relevant file split information
+        people_list_train = os.path.join(
+            self.info_object.base_data_dir,
+            "splits_person", "80_20", self.split, "train.txt")
+        with open(people_list_train, 'r') as f:
+            wanted_people = f.read().splitlines()
+        wanted_people = set([int(x) for x in wanted_people])
+        non_members = wanted_people.difference(set(used_ids))
+        return np.array(list(non_members))
 
     def get_used_indices(self):
         return self.people_in_train, self.people_in_test

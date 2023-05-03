@@ -291,7 +291,7 @@ class GenericFaceAudit(BaseModel):
                  hidden_size: int,
                  feat_dim: int,
                  n_people: int = None):
-        super().__init__(is_conv=True, is_contrastive_model=True)
+        super().__init__(is_conv=True, is_contrastive_model=True, is_relation_based=True)
         self.fe_model = model
         self.n_people = n_people
         self.feat_dim = feat_dim

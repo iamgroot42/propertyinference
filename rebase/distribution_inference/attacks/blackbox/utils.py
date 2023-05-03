@@ -25,6 +25,9 @@ from distribution_inference.attacks.blackbox.KL_regression import KLRegression
 from distribution_inference.attacks.blackbox.label_KL import label_only_KLAttack
 from distribution_inference.attacks.blackbox.zhang import ZhangAttack
 from distribution_inference.attacks.blackbox.att_ratio_attack import AttRatioAttack
+from distribution_inference.attacks.blackbox.face_audit import FaceAuditAttack
+from distribution_inference.datasets.base import make_gallery_query_splits, _make_gallery_query_split
+
 
 ATTACK_MAPPING = {
     "threshold_perpoint": PerPointThresholdAttack,
@@ -41,7 +44,8 @@ ATTACK_MAPPING = {
     "KL_regression": KLRegression,
     "label_KL": label_only_KLAttack,
     "zhang": ZhangAttack,
-    "att_ratio": AttRatioAttack
+    "att_ratio": AttRatioAttack,
+    "face_auditor": FaceAuditAttack
 }
 
 
@@ -128,50 +132,119 @@ def _collect_embeddings(model, data, batch_size: int):
     return ch.cat(embds, 0)
 
 
+@ch.no_grad()
 def get_relation_preds(support_images, query_images,
-                       models: List[nn.Module],
-                       verbose: bool = True):
+                       model: nn.Module):
     """
         Extract model output values as similarities between images from the support set (target person)
         and each query image, for each of the given models.
     """
-    iterator = models
-    if verbose:
-        iterator = tqdm(iterator, desc="Generating Predictions")
-    for model in iterator:
-        # samples here are query images
-        # batches here are support images, with '0' referring to the person of interest
-        # and are expected to be sorted, with the first one corresponding to the person of interest
+    # samples here are query images
+    # batches here are support images, with '0' referring to the person of interest
+    # and are expected to be sorted, with the first one corresponding to the person of interest
 
-        # 1. Collect mean embedding ("prototype") for each class based on embedding
-        # 2. Use relation model to get "similarity" between each query image and each class prototype
-        # 3. Use similarity to predict class of each query image
+    # 1. Collect mean embedding ("prototype") for each class based on embedding
+    # 2. Use relation model to get "similarity" between each query image and each class prototype
+    # 3. Use similarity to predict class of each query image
 
-        # compute features for query images
-        query_features = model(query_images, embedding_mode=True)
-        n_queries = query_features.shape[0]
+    # compute features for query images
+    query_features = model(query_images, embedding_mode=True)
+    n_queries = query_features.shape[0]
 
-        # compute features for support people
-        concatenated_relations = []
-        for person_images in support_images:
-            sample_features = model(person_images, embedding_mode=True)
-            # Aggregate to get "prototype"
-            sample_features = ch.mean(sample_features, 0).unsqueeze(0)
-            sample_features = sample_features.repeat(n_queries, 1, 1, 1)
-            concatenated_relations.append(ch.cat((sample_features, query_features), 1))
-        concatenated_relations = ch.stack(concatenated_relations, 0)
-        concatenated_relations = ch.transpose(concatenated_relations, 0, 1)
-        # Results in (n_query, n_people, feat_1 * 2, feat_2, feat_3)
-        relation_pairs = concatenated_relations.reshape(-1,
-                                                     concatenated_relations.shape[2],
-                                                     concatenated_relations.shape[3],
-                                                     concatenated_relations.shape[4])
+    # compute features for support people
+    concatenated_relations = []
+    for person_images in support_images:
+        sample_features = model(person_images, embedding_mode=True)
+        # Aggregate to get "prototype" embedding
+        sample_features = ch.mean(sample_features, 0).unsqueeze(0)
+        sample_features = sample_features.repeat(n_queries, 1, 1, 1)
+        concatenated_relations.append(ch.cat((sample_features, query_features), 1))
+    concatenated_relations = ch.stack(concatenated_relations, 0) # shape: (n_way, n_queries, 2 * feat_1, feat_2, feat_3)
+    concatenated_relations = ch.transpose(concatenated_relations, 0, 1) # shape: (n_queries, n_way, 2 * feat_1, feat_2, feat_3)
+    relation_pairs = concatenated_relations.reshape(-1,
+                                                    concatenated_relations.shape[2],
+                                                    concatenated_relations.shape[3],
+                                                    concatenated_relations.shape[4])
 
-        # Relations is of shape (n_queries, n_people)
-        relations = model(relation_pairs, embedding_mode=False).view(
-            n_queries, -1)
-        # Can be thought of as "logits" if working with some attack here
-        return relations
+    # Relations is of shape (n_queries, n_people)
+    relations = model(relation_pairs, embedding_mode=False).view(
+        n_queries, -1)
+    # Can be thought of as "logits" if working with some attack here
+    return relations.detach()
+
+
+def get_vic_adv_preds_on_distr_relation_net(
+        models_vic: Tuple[List[nn.Module], List[nn.Module]],
+        models_adv: List[Tuple[nn.Module,  List]],
+        ds_obj: CustomDatasetWrapper,
+        batch_size: int):
+    """
+        ds_obj should correspond here to adversary data with subject of interested 'included'
+    """
+
+    # Get 'num_support' information from ds_obj
+    num_support = ds_obj.relation_config.k_shot
+
+    # Get loader (containing image of person of interest)
+    _, loader_adv = ds_obj.get_loaders(shuffle=True, batch_size=batch_size, primed_for_training=False)
+
+    # Generating vectors for victim
+    # Collect images for person of interest
+    imgs = []
+    for batch in loader_adv:
+        prop_labels = batch[2]
+        # Only append images where prop_labels is 1
+        imgs.append(batch[0][prop_labels == 1])
+    imgs = ch.cat(imgs, 0)
+    split = _make_gallery_query_split(imgs, num_support)
+    relation_values_1, relation_values_2 = [], []
+    # Populate these values for models trained with and without subject of interest
+    for model in models_vic[0]:
+        relations = get_relation_preds(split[0], split[1], model)
+        relation_values_1.append(relations)
+    for model in models_vic[1]:
+        relations = get_relation_preds(split[0], split[1], model)
+        relation_values_2.append(relations)
+
+    # Generate "vectors" for adversary models
+    # For this scenario, models_adv[0] is good enough
+    preds_adv_1, preds_adv_2 = [], [] # for (non-members, members)
+    for (model, train_ids) in zip(models_adv[0], models_adv[1]):
+        X_nonmem, X_mem = [], []
+        # Get a loader with 
+        loader_members = ds_obj.get_specified_loader(
+            train_ids, shuffle=True, batch_size=batch_size)
+        non_members = ds_obj.get_non_members(train_ids)
+        loader_non_members = ds_obj.get_specified_loader(
+            non_members, shuffle=True, batch_size=batch_size)
+        # Get random gallery-query splts for each person
+        splits_member = make_gallery_query_splits(loader_members, num_support=num_support)
+        splits_non_member = make_gallery_query_splits(loader_non_members, num_support=num_support)
+        # Get model outputs
+        for split in splits_non_member:
+            relations = get_relation_preds(split[0], split[1], model)
+            X_nonmem.append(relations)
+        for split in splits_member:
+            relations = get_relation_preds(split[0], split[1], model)
+            X_mem.append(relations)
+            
+        preds_adv_1.append(X_nonmem)
+        preds_adv_2.append(X_mem)
+
+    # preds_adv_1 are feature vectors for non-members
+    # preds_adv_2 are feature vectors for members
+    adv_preds = PredictionsOnOneDistribution(
+        preds_property_1=preds_adv_1,
+        preds_property_2=preds_adv_2
+    )
+
+    # relation_values_1 are feature vectors for models that did not use subject of interest
+    # relation_values_2 are feature vectors for models that did use subject of interest
+    vic_preds = PredictionsOnOneDistribution(
+        preds_property_1=relation_values_1,
+        preds_property_2=relation_values_2
+    )
+    return adv_preds, vic_preds
 
 
 def get_contrastive_preds(loader,
@@ -561,6 +634,17 @@ def get_vic_adv_preds_on_distr(
         if models_vic[0][0].is_graph_model:
             are_graph_models = True
     
+    # Check if models are relation-net based
+    are_relation_net_models = False
+    if epochwise_version:
+        if models_vic[0][0][0].is_relation_based:
+            are_relation_net_models = True
+    else:
+        if models_vic[0][0].is_relation_based:
+            are_relation_net_models = True
+    if are_relation_net_models:
+        return get_vic_adv_preds_on_distr_relation_net(models_vic, models_adv, ds_obj, batch_size)
+
     # Check if models are contrastive-learning based
     are_contrastive_models = False
     if epochwise_version:

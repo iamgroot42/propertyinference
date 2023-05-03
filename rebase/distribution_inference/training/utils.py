@@ -64,8 +64,7 @@ def save_model(model, path, indices=None):
     else:
         model_state_dict = model.state_dict()
         # If compiled model, save the original model
-        if all([k.startswith("_orig_mod") for k in model_state_dict.keys()]):
-            model_state_dict = model_state_dict["_orig_mod"]
+        model_state_dict = handle_compiled_weights(model_state_dict)
         if indices is not None:
             state_dict = {
                 "actual_model": model_state_dict,

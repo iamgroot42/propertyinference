@@ -366,6 +366,7 @@ class CustomDatasetWrapper:
             shuffle=shuffle,
             model_arch=model_arch,
             custom_models_path=custom_models_path)
+        relation_based_models = train_config.data_config.relation_config is not None
         i = 0
         n_failed = []
         models = []
@@ -438,8 +439,12 @@ class CustomDatasetWrapper:
                     # Has before/after information
                     if type(model) == tuple:
                         models.append(model[0])
-                        before_ids.append((model[1][0][0], model[1][1][0]))
-                        after_ids.append((np.sort(model[1][0][1]), np.sort(model[1][1][1])))
+                        if relation_based_models:
+                            before_ids.append(model[1][0])
+                            after_ids.append(model[1][1])
+                        else:
+                            before_ids.append((model[1][0][0], model[1][1][0]))
+                            after_ids.append((np.sort(model[1][0][1]), np.sort(model[1][1][1])))
                     else:
                         models.append(model)
                     i += 1
@@ -604,3 +609,30 @@ class CustomDatasetWrapper:
 
         feature_vectors = np.array(feature_vectors, dtype='object')
         return dims, feature_vectors
+
+
+def _make_gallery_query_split(images, num_support: int):
+    # Randomly pick 'num_support' from v, without replacement
+    permutation = ch.randperm(images.shape[0])
+    support = images[permutation[:num_support]]
+    query = images[permutation[num_support:]]
+    return (support, query)
+
+
+def make_gallery_query_splits(loader, num_support: int):
+    image_map = {}
+    for i, (batch) in enumerate(loader):
+        images = batch[0]
+        labels = batch[1]
+        for l in labels:
+            l_ = l.item()
+            if l_ not in image_map:
+                image_map[l_] = []
+            image_map[l_].append(images[labels == l_])
+    for k in image_map.keys():
+        image_map[k] = ch.cat(image_map[k], dim=0)
+    # Break this map down into a list of (support, query) images
+    pairs = []
+    for k, v in image_map.items():
+        pairs.append(_make_gallery_query_split(v, num_support))
+    return pairs

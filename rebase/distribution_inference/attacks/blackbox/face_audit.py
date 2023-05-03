@@ -2,7 +2,8 @@ import numpy as np
 from typing import Tuple
 from typing import List, Callable
 
-from distribution_inference.attacks.blackbox.core import Attack, PredictionsOnDistributions,PredictionsOnOneDistribution,PredictionsOnOneDistribution
+from sklearn.neural_network import MLPClassifier
+from distribution_inference.attacks.blackbox.core import Attack, PredictionsOnDistributions
 
 
 class FaceAuditAttack(Attack):
@@ -24,4 +25,25 @@ class FaceAuditAttack(Attack):
         if not relation_based:
             raise ValueError("Attack only supported for relation-net models")
 
-        # TODO: Implement attack
+        preds_adv_ = preds_adv.preds_on_distr_1
+        preds_vic_ = preds_vic.preds_on_distr_1
+        preds_adv_non_members = preds_adv_.preds_property_1
+        preds_adv_members = preds_adv_.preds_property_2
+        preds_vic_non_members = preds_vic_.preds_property_1
+        preds_vic_members = preds_vic_.preds_property_2
+
+        Y_train = np.concatenate((np.zeros(len(preds_adv_non_members)), np.ones(len(preds_adv_members))))
+        Y_test = np.concatenate((np.zeros(len(preds_vic_non_members)), np.ones(len(preds_vic_members))))
+        X_train = np.concatenate((preds_adv_non_members, preds_adv_members))
+        X_test = np.concatenate((preds_vic_non_members, preds_vic_members))
+
+        # Train a simple sklearn MLP
+        meta_clf = MLPClassifier(hidden_layer_sizes=(100,))
+        meta_clf.fit(X_train, Y_train)
+        train_acc = meta_clf.score(X_train, Y_train)
+        test_acc = meta_clf.score(X_test, Y_test)
+        preds = meta_clf.predict_proba(X_test)[:, 1]
+        print("Train acc: {}, Test acc: {}".format(train_acc, test_acc))
+
+        choice_information = (None, None)
+        return [(test_acc, preds), (None, None), choice_information]
