@@ -15,6 +15,7 @@ from distribution_inference.logging.core import AttackResult
 import torch
 torch.multiprocessing.set_sharing_strategy('file_system')
 
+
 if __name__ == "__main__":
     parser = ArgumentParser(add_help=False)
     parser.add_argument(
@@ -74,6 +75,8 @@ if __name__ == "__main__":
     ds_adv_1 = ds_wrapper_class(data_config_adv_1)
     train_adv_config = get_train_config_for_adv(train_config, attack_config)
 
+    relation_net_based = train_config.data_config.relation_config is not None
+
     def single_evaluation(models_1_path=None, models_2_paths=None):
         # Load victim models for first value
         models_vic_1 = ds_vic_1.get_models(
@@ -115,63 +118,95 @@ if __name__ == "__main__":
 
             for t in range(attack_config.tries):
                 print("{}: trial {}".format(prop_value, t))
+
+                # Load adversary models for first ratio
                 models_adv_1 = ds_adv_1.get_models(
                     train_adv_config,
                     n_models=bb_attack_config.num_adv_models,
                     on_cpu=attack_config.on_cpu,
                     model_arch=attack_config.adv_model_arch,
                     target_epoch = attack_config.adv_target_epoch)
-                if type(models_adv_1) == tuple:
+                # Discard training-data information (unless face-audit)
+                if type(models_adv_1) == tuple and (not relation_net_based):
                     models_adv_1 = models_adv_1[0]
-                models_adv_2 = ds_adv_2.get_models(
-                    train_adv_config,
-                    n_models=bb_attack_config.num_adv_models,
-                    on_cpu=attack_config.on_cpu,
-                    model_arch=attack_config.adv_model_arch,
-                    target_epoch = attack_config.adv_target_epoch)
-                if type(models_adv_2) == tuple:
-                    models_adv_2 = models_adv_2[0]
 
+                # Adversary only has 'no subject' data, so no models for ds_adv_2
+                if not relation_net_based:
+                    models_adv_2 = ds_adv_2.get_models(
+                        train_adv_config,
+                        n_models=bb_attack_config.num_adv_models,
+                        on_cpu=attack_config.on_cpu,
+                        model_arch=attack_config.adv_model_arch,
+                        target_epoch = attack_config.adv_target_epoch)
+                    if type(models_adv_2) == tuple:
+                        models_adv_2 = models_adv_2[0]
+ 
                 # Get victim and adv predictions on loaders for first ratio
+                if relation_net_based:
+                    # If relation-based, adv only has models for 'no subject'
+                    # but will use data that has subject, since that forms the query vector
+                    # (before, after) for relation models is actually (train, test)
+                    models_adv_send = (models_adv_1[0], models_adv_1[1][0])
+                    ds_obj_use = ds_adv_2
+                else:
+                    models_adv_send = (models_adv_1, models_adv_2)
+                    ds_obj_use = ds_adv_1
                 return_obj = get_vic_adv_preds_on_distr(
                     models_vic=(models_vic_1, models_vic_2),
-                    models_adv=(models_adv_1, models_adv_2),
-                    ds_obj=ds_adv_1,
+                    models_adv=models_adv_send,
+                    ds_obj=ds_obj_use,
                     batch_size=bb_attack_config.batch_size,
                     epochwise_version=attack_config.train_config.save_every_epoch,
                     preload=bb_attack_config.preload,
                     multi_class=bb_attack_config.multi_class,
                     make_processed_version=attack_config.adv_processed_variant
                 )
-                if are_contrastive_models:
+                if relation_net_based:
+                    preds_adv_use, preds_vic_use = return_obj
+                    preds_adv = PredictionsOnDistributions(
+                        preds_on_distr_1=preds_adv_use,
+                        preds_on_distr_2=preds_adv_use
+                    )
+                    preds_vic = PredictionsOnDistributions(
+                        preds_on_distr_1=preds_vic_use,
+                        preds_on_distr_2=preds_vic_use
+                    )
+                    ground_truth = None
+                    not_using_logits = False
+                elif are_contrastive_models:
                     preds_adv_on_1, preds_vic_on_1, ground_truth_1, not_using_logits, gallery_images =  return_obj
                 else:
                     preds_adv_on_1, preds_vic_on_1, ground_truth_1, not_using_logits =  return_obj
-                # Get victim and adv predictions on loaders for second ratio
-                return_obj = get_vic_adv_preds_on_distr(
-                    models_vic=(models_vic_1, models_vic_2),
-                    models_adv=(models_adv_1, models_adv_2),
-                    ds_obj=ds_adv_2,
-                    batch_size=bb_attack_config.batch_size,
-                    epochwise_version=attack_config.train_config.save_every_epoch,
-                    preload=bb_attack_config.preload,
-                    multi_class=bb_attack_config.multi_class,
-                    make_processed_version=attack_config.adv_processed_variant,
-                    gallery_images=gallery_images
-                )
-                if are_contrastive_models:
-                    preds_adv_on_2, preds_vic_on_2, ground_truth_2, _, _ = return_obj
-                else:
-                    preds_adv_on_2, preds_vic_on_2, ground_truth_2, _ = return_obj
-                # Wrap predictions to be used by the attack
-                preds_adv = PredictionsOnDistributions(
-                    preds_on_distr_1=preds_adv_on_1,
-                    preds_on_distr_2=preds_adv_on_2
-                )
-                preds_vic = PredictionsOnDistributions(
-                    preds_on_distr_1=preds_vic_on_1,
-                    preds_on_distr_2=preds_vic_on_2
-                )
+
+                # Relation-net-based setting uses one data-loader (with prop labels as indicators)
+                # So do not really need "data from both distributions"
+                if not relation_net_based:
+                    # Get victim and adv predictions on loaders for second ratio
+                    return_obj = get_vic_adv_preds_on_distr(
+                        models_vic=(models_vic_1, models_vic_2),
+                        models_adv=(models_adv_1, models_adv_2),
+                        ds_obj=ds_adv_2,
+                        batch_size=bb_attack_config.batch_size,
+                        epochwise_version=attack_config.train_config.save_every_epoch,
+                        preload=bb_attack_config.preload,
+                        multi_class=bb_attack_config.multi_class,
+                        make_processed_version=attack_config.adv_processed_variant,
+                        gallery_images=gallery_images
+                    )
+                    if are_contrastive_models:
+                        preds_adv_on_2, preds_vic_on_2, ground_truth_2, _, _ = return_obj
+                    else:
+                        preds_adv_on_2, preds_vic_on_2, ground_truth_2, _ = return_obj
+                    # Wrap predictions to be used by the attack
+                    preds_adv = PredictionsOnDistributions(
+                        preds_on_distr_1=preds_adv_on_1,
+                        preds_on_distr_2=preds_adv_on_2
+                    )
+                    preds_vic = PredictionsOnDistributions(
+                        preds_on_distr_1=preds_vic_on_1,
+                        preds_on_distr_2=preds_vic_on_2
+                    )
+                    ground_truth = (ground_truth_1, ground_truth_2)
 
                 # TODO: Need a better (and more modular way) to handle
                 # the redundant code above.
@@ -184,7 +219,7 @@ if __name__ == "__main__":
                     # Launch attack
                     result = attacker_obj.attack(
                         preds_adv, preds_vic,
-                        ground_truth=(ground_truth_1, ground_truth_2),
+                        ground_truth=ground_truth,
                         calc_acc=calculate_accuracies,
                         epochwise_version=attack_config.train_config.save_every_epoch,
                         not_using_logits=not_using_logits)

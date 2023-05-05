@@ -14,26 +14,24 @@ class FaceAuditAttack(Attack):
                calc_acc: Callable = None,
                epochwise_version: bool = False,
                not_using_logits: bool = False,
-               contrastive: bool = False,
-               relation_based: bool = False):
+               contrastive: bool = False):
         assert not (
             self.config.multi2 and self.config.multi), "No implementation for both multi model"
         assert not (
             epochwise_version and self.config.multi2), "No implementation for both epochwise and multi model"
         if epochwise_version:
             raise NotImplementedError("Not implemented for epoch-wise version as of now")
-        if not relation_based:
-            raise ValueError("Attack only supported for relation-net models")
 
         preds_adv_ = preds_adv.preds_on_distr_1
         preds_vic_ = preds_vic.preds_on_distr_1
-        preds_adv_non_members = preds_adv_.preds_property_1
-        preds_adv_members = preds_adv_.preds_property_2
-        preds_vic_non_members = preds_vic_.preds_property_1
-        preds_vic_members = preds_vic_.preds_property_2
+        preds_adv_non_members = np.array(preds_adv_.preds_property_1)
+        preds_adv_members = np.array(preds_adv_.preds_property_2)
+        preds_vic_non_members = np.array(preds_vic_.preds_property_1)
+        preds_vic_members = np.array(preds_vic_.preds_property_2)
 
         Y_train = np.concatenate((np.zeros(len(preds_adv_non_members)), np.ones(len(preds_adv_members))))
         Y_test = np.concatenate((np.zeros(len(preds_vic_non_members)), np.ones(len(preds_vic_members))))
+
         X_train = np.concatenate((preds_adv_non_members, preds_adv_members))
         X_test = np.concatenate((preds_vic_non_members, preds_vic_members))
 

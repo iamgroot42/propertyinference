@@ -17,6 +17,7 @@ from distribution_inference.config import TrainConfig, DatasetConfig
 from distribution_inference.training.utils import load_model
 from distribution_inference.utils import model_compile_supported
 from distribution_inference.datasets._contrastive_utils import NWays, KShots, LoadData, RemapLabels, TaskDataset, MetaDataset
+from distribution_inference.utils import warning_string
 
 
 class DatasetInformation(base.DatasetInformation):
@@ -25,7 +26,7 @@ class DatasetInformation(base.DatasetInformation):
         # 0 (False) here means specified members not present in training data
         # 1 (True) here means specified members present in training data
         holdout_people = 100
-        props = [str(x) for x in range(self.holdout_people)]
+        props = [str(x) for x in range(holdout_people)]
         super().__init__(name="Celeb-A Person",
                          data_path="celeba",
                          models_path="models_celeba_person/80_20_split",
@@ -41,13 +42,12 @@ class DatasetInformation(base.DatasetInformation):
     def get_model(self, parallel: bool = False, fake_relu: bool = False,
                   latent_focus=None, cpu: bool = False,
                   model_arch: str = None,
-                  for_training: bool = False,
-                  n_people: int = None) -> nn.Module:
+                  for_training: bool = False) -> nn.Module:
         if model_arch is None or model_arch == "None":
             model_arch = self.default_model
 
         if model_arch == "scnn_relation":
-            model = models_contrastive.SCNNFaceAudit(n_people=n_people)
+            model = models_contrastive.SCNNFaceAudit()
         else:
             raise NotImplementedError("Model architecture not supported")
 
@@ -257,7 +257,7 @@ class CelebaPersonWrapper(base.CustomDatasetWrapper):
         self.info_object = DatasetInformation(epoch_wise=epoch)
 
         if self.split == "adv" and self.ratio == 1:
-            raise ValueError("Adversary does not train on data from subject to be inferred (yet- will change later)")
+            print(warning_string("\nThis setting only valid for launching attack- make sure not training model with it!\n"))
         if int(self.prop) < 0 or int(self.prop) >= self.info_object.holdout_people:
             raise ValueError(f"Invalid prop: {int(self.prop)}. Must be in [0, {self.info_object.holdout_people})")
 
@@ -364,10 +364,6 @@ class CelebaPersonWrapper(base.CustomDatasetWrapper):
         n_people_train = self.n_people
         if self.split == "victim" and self.ratio == 1:
             n_people_train -= 1 # All but one to be sampled from pool of people    
-        # if self.split == "adv":
-        #     people_always_used = os.path.join(
-        #         self.info_object.base_data_dir,
-        #         "splits_person", "80_20", "adv", "always_used_audit.txt")
 
         # Adjust number of people to sample from pool
         filenames_train, labels_train = self._pick_wanted_people(
@@ -377,6 +373,7 @@ class CelebaPersonWrapper(base.CustomDatasetWrapper):
 
         person_of_interest_indicator = None
         if self.split == "victim" and self.ratio == 1:
+            # Will be part of training
             people_always_used = os.path.join(
                 self.info_object.base_data_dir,
                 "splits_person", "80_20", "victim", "always_used_train.txt")
@@ -387,6 +384,16 @@ class CelebaPersonWrapper(base.CustomDatasetWrapper):
             person_of_interest_indicator = np.zeros(len(filenames_train))
             person_of_interest_indicator[-len(filenames_always_train):] = 1
             labels_train = np.concatenate((labels_train, labels_always_train))
+        elif self.split == "adv" and self.ratio == 1:
+            # Will be part of testing (for auditing)
+            people_always_used = os.path.join(
+                self.info_object.base_data_dir,
+                "splits_person", "80_20", "adv", "always_used_audit.txt")
+            filenames_always_test, labels_always_test = self._load_data_for_always_included_people(people_always_used)
+            filenames_test = np.concatenate((filenames_test, filenames_always_test))
+            person_of_interest_indicator = np.zeros(len(filenames_test))
+            person_of_interest_indicator[-len(filenames_always_test):] = 1
+            labels_test = np.concatenate((labels_test, labels_always_test))
 
         # Keep note of people (identifiers) used in training and validation for this specific instance
         self.people_in_train = np.unique(labels_train)
@@ -399,12 +406,13 @@ class CelebaPersonWrapper(base.CustomDatasetWrapper):
             filenames_train, labels_train,
             remap_classes=True,
             transform=self.train_transforms,
-            person_of_interest_indicator=person_of_interest_indicator)
+            person_of_interest_indicator=person_of_interest_indicator if self.split == "victim" else None)
 
         ds_test = CelebAPerson(
             filenames_test, labels_test,
             remap_classes=True,
-            transform=self.test_transforms)
+            transform=self.test_transforms,
+            person_of_interest_indicator=person_of_interest_indicator if self.split == "adv" else None)
         
         if not primed_for_training:
             return ds_train, ds_test

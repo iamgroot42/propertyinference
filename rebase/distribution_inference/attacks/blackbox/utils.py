@@ -1,5 +1,5 @@
 from collections import OrderedDict
-from typing import List, Tuple
+from typing import List, Tuple, Union
 import torch.nn as nn
 from tqdm import tqdm
 import numpy as np
@@ -177,13 +177,15 @@ def get_vic_adv_preds_on_distr_relation_net(
         models_vic: Tuple[List[nn.Module], List[nn.Module]],
         models_adv: List[Tuple[nn.Module,  List]],
         ds_obj: CustomDatasetWrapper,
-        batch_size: int):
+        batch_size: int,
+        use_similarities: bool = True):
     """
         ds_obj should correspond here to adversary data with subject of interested 'included'
     """
 
     # Get 'num_support' information from ds_obj
     num_support = ds_obj.relation_config.k_shot
+    num_query = ds_obj.relation_config.num_query_test
 
     # Get loader (containing image of person of interest)
     _, loader_adv = ds_obj.get_loaders(shuffle=True, batch_size=batch_size, primed_for_training=False)
@@ -196,21 +198,30 @@ def get_vic_adv_preds_on_distr_relation_net(
         # Only append images where prop_labels is 1
         imgs.append(batch[0][prop_labels == 1])
     imgs = ch.cat(imgs, 0)
-    split = _make_gallery_query_split(imgs, num_support)
+    split = _make_gallery_query_split(imgs, num_support, num_query)
     relation_values_1, relation_values_2 = [], []
     # Populate these values for models trained with and without subject of interest
-    for model in models_vic[0]:
-        relations = get_relation_preds(split[0], split[1], model)
-        relation_values_1.append(relations)
-    for model in models_vic[1]:
-        relations = get_relation_preds(split[0], split[1], model)
-        relation_values_2.append(relations)
+    for model in tqdm(models_vic[0], desc="Generating predictions for victim (0)"):
+        relations = get_relation_preds([split[0]], split[1], model).detach().cpu().numpy()
+        if use_similarities:
+            sims = image_similarities(split[0], split[1])
+            sorting_order = np.argsort(sims)
+            relation_values_1.append(np.concatenate((relations[sorting_order, 0], sims[sorting_order])))
+        else:
+            relation_values_1.append(relations[:, 0])
+    for model in tqdm(models_vic[1], desc="Generating predictions for victim (1)"):
+        relations = get_relation_preds([split[0]], split[1], model).detach().cpu().numpy()
+        if use_similarities:
+            sims = image_similarities(split[0], split[1])
+            sorting_order = np.argsort(sims)
+            relation_values_2.append(np.concatenate((relations[sorting_order, 0], sims[sorting_order])))
+        else:
+            relation_values_2.append(relations[:, 0])
 
     # Generate "vectors" for adversary models
     # For this scenario, models_adv[0] is good enough
     preds_adv_1, preds_adv_2 = [], [] # for (non-members, members)
-    for (model, train_ids) in zip(models_adv[0], models_adv[1]):
-        X_nonmem, X_mem = [], []
+    for (model, train_ids) in tqdm(zip(models_adv[0], models_adv[1]), desc="Generating predictions for adversary", total=len(models_adv[0])):
         # Get a loader with 
         loader_members = ds_obj.get_specified_loader(
             train_ids, shuffle=True, batch_size=batch_size)
@@ -218,18 +229,26 @@ def get_vic_adv_preds_on_distr_relation_net(
         loader_non_members = ds_obj.get_specified_loader(
             non_members, shuffle=True, batch_size=batch_size)
         # Get random gallery-query splts for each person
-        splits_member = make_gallery_query_splits(loader_members, num_support=num_support)
-        splits_non_member = make_gallery_query_splits(loader_non_members, num_support=num_support)
+        num_task = 10
+        splits_member = make_gallery_query_splits(loader_members, num_support=num_support, num_task=num_task, num_query=num_query)
+        splits_non_member = make_gallery_query_splits(loader_non_members, num_support=num_support, num_task=num_task, num_query=num_query)
         # Get model outputs
         for split in splits_non_member:
-            relations = get_relation_preds(split[0], split[1], model)
-            X_nonmem.append(relations)
+            relations = get_relation_preds([split[0]], split[1], model).detach().cpu().numpy()
+            if use_similarities:
+                sims = image_similarities(split[0], split[1])
+                sorting_order = np.argsort(sims)
+                preds_adv_1.append(np.concatenate((relations[sorting_order, 0], sims[sorting_order])))
+            else:
+                preds_adv_1.append(relations[:, 0])
         for split in splits_member:
-            relations = get_relation_preds(split[0], split[1], model)
-            X_mem.append(relations)
-            
-        preds_adv_1.append(X_nonmem)
-        preds_adv_2.append(X_mem)
+            relations = get_relation_preds([split[0]], split[1], model).detach().cpu().numpy()
+            if use_similarities:
+                sims = image_similarities(split[0], split[1])
+                sorting_order = np.argsort(sims)
+                preds_adv_2.append(np.concatenate((relations[sorting_order, 0], sims[sorting_order])))
+            else:
+                preds_adv_2.append(relations[:, 0])
 
     # preds_adv_1 are feature vectors for non-members
     # preds_adv_2 are feature vectors for members
@@ -245,6 +264,18 @@ def get_vic_adv_preds_on_distr_relation_net(
         preds_property_2=relation_values_2
     )
     return adv_preds, vic_preds
+
+
+def image_similarities(gallery, query):
+    """
+        Get similarity values between each query image and gallery image (mean)
+    """
+    similarities = []
+    for gal_img in gallery:
+        sims = ch.cosine_similarity(gal_img.view(1, -1), query.view(query.shape[0], -1), dim=1)
+        similarities.append(sims)
+    similarities = ch.mean(ch.stack(similarities, 0), 0)
+    return similarities.numpy()
 
 
 def get_contrastive_preds(loader,
@@ -616,7 +647,7 @@ def get_vic_adv_preds_on_distr_seed(
 
 def get_vic_adv_preds_on_distr(
         models_vic: Tuple[List[nn.Module], List[nn.Module]],
-        models_adv: Tuple[List[nn.Module], List[nn.Module]],
+        models_adv: Union[Tuple[List[nn.Module], List[nn.Module]], Tuple[List[nn.Module], List]],
         ds_obj: CustomDatasetWrapper,
         batch_size: int,
         epochwise_version: bool = False,

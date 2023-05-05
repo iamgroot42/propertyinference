@@ -40,7 +40,7 @@ def fast_adapt(model, data, labels, ways: int, shot: int, query_num: int, get_pr
 
     # 1. Collect mean embedding ("prototype") for each class based on embedding
     # 2. Use relation model to get "similarity" between each query image and each class prototype
-    # 3. Use similarity to predict class of each query image    
+    # 3. Use similarity to predict class of each query image
 
     # calculate features
     sample_features = model(samples, embedding_mode=True)  # 5x64*5*5
@@ -78,7 +78,7 @@ def train_epoch(loader, model, optimizer, epoch: int,
     model.train()
     tot_loss, tot_acc, tot_items = 0, 0, 0
     # The loader here has len(1) but we sample from it multiple times
-    train_num_task = 100
+    train_num_task = 200
 
     iterator = range(train_num_task)
     if verbose:
@@ -88,13 +88,13 @@ def train_epoch(loader, model, optimizer, epoch: int,
 
         data_input = batch[0].cuda()
         label = batch[1].cuda().long()
-        
+
         _, loss, acc = fast_adapt(model, data_input, label, n_way, k_shot, num_query)
-        
+
         optimizer.zero_grad()
         loss.backward()
         # Clip grad norm
-        ch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
+        # ch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
         optimizer.step()
 
         batch_size = data_input.size(0)
@@ -129,7 +129,7 @@ def validate_epoch(loader, model,
     iterator = loader
     if verbose:
         iterator = tqdm(iterator, desc="Validation")
-        
+
     for batch in iterator:
         data_input = batch[0].cuda()
         lbls = batch[1].cuda()
@@ -138,7 +138,7 @@ def validate_epoch(loader, model,
         if get_preds:
             acc, preds = acc
             preds_collected.append(preds)
-        
+
         batch_size = data_input.size(0)
         vacc += acc
         vloss += loss.item() * batch_size
@@ -165,7 +165,7 @@ def train(model, loaders, train_config: TrainConfig):
             print(warning_string("\nUsing test-data to pick best-performing model\n"))
     else:
         train_loader, test_loader, val_loader = loaders
-    
+
     # Get metrics on val data, if available
     if val_loader is not None:
         use_loader_for_metric_log = val_loader
@@ -181,12 +181,13 @@ def train(model, loaders, train_config: TrainConfig):
                                  lr=train_config.learning_rate, weight_decay=train_config.weight_decay)
 
     scheduler = StepLR(optimizer, step_size=10, gamma=0.5)
+    # scheduler = StepLR(optimizer, step_size=5, gamma=0.5)
 
     # Define iterator
     iterator = range(1, train_config.epochs + 1)
     if not train_config.verbose:
         iterator = tqdm(iterator, desc="Epochs")
-    
+
     # Extract hyper-params for k-way, n-shot, etc.
     relation_config = train_config.data_config.relation_config
     n_way = relation_config.n_way

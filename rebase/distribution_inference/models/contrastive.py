@@ -289,14 +289,11 @@ class GenericFaceAudit(BaseModel):
     def __init__(self,
                  model: nn.Module,
                  hidden_size: int,
-                 feat_dim: int,
-                 n_people: int = None):
+                 feat_dim: int):
         super().__init__(is_conv=True, is_contrastive_model=True, is_relation_based=True)
         self.fe_model = model
-        self.n_people = n_people
         self.feat_dim = feat_dim
-        if self.n_people is not None:
-            self.relation_network = RelationNetwork(input_size=self.feat_dim, hidden_size=hidden_size)
+        self.relation_network = RelationNetwork(input_size=self.feat_dim, hidden_size=hidden_size)
 
     def forward(self, x: ch.Tensor,
                 embedding_mode: bool) -> ch.Tensor:
@@ -314,7 +311,6 @@ class GenericFaceAudit(BaseModel):
 
 class SCNNFaceAudit(GenericFaceAudit):
     def __init__(self,
-                 feat_dim: int = 64,
-                 n_people: int = None):
+                 feat_dim: int = 64):
         model = SCNN()
-        super().__init__(model, feat_dim = feat_dim, hidden_size=100, n_people=n_people)
+        super().__init__(model, feat_dim = feat_dim, hidden_size=100)
