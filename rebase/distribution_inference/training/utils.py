@@ -1,5 +1,6 @@
 import torch as ch
 import pickle
+import os
 import numpy as np
 from cleverhans.future.torch.attacks.projected_gradient_descent import projected_gradient_descent
 from distribution_inference.config import AttackConfig, EarlyStoppingConfig
@@ -61,6 +62,16 @@ def save_model(model, path, indices=None):
             raise NotImplementedError("Saving sklearn model with indices is not implemented")
         with open(path, 'wb') as f:
             pickle.dump(model, f)
+    elif model.is_hf_model:
+        if path.endswith(".ch"):
+            path = path[:-3]
+        model.save(path)
+        if indices is not None:
+            state_dict = {
+                "train_ids": indices[0],
+                "test_ids": indices[1],
+            }
+            ch.save(state_dict, os.path.join(path, "indices.pt"))
     else:
         model_state_dict = model.state_dict()
         # If compiled model, save the original model
@@ -95,6 +106,17 @@ def load_model(model, path, on_cpu: bool = False):
                 model = pickle.load(f)
             # Sklearn model is obviously not a graph model
             model.is_graph_model = False
+        elif model.is_hf_model:
+            if path.endswith(".ch"):
+                path = path[:-3]
+            # Load model
+            model.load(path, map_location=map_location)
+            # Check if indices are also stored
+            if os.path.exists(os.payh.join(path, "indices.pt")):
+                state_dict = ch.load(os.path.join(path, "indices.pt"), map_location=map_location)
+                return model, (state_dict["train_ids"], state_dict["test_ids"])
+            else:
+                return model
         else:
             model_dict = ch.load(path, map_location=map_location)
             if "actual_model" in model_dict:

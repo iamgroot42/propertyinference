@@ -3,3 +3,5 @@ __pycache__/*
 ./do_all.sh
 *.pdf
 *.pkl
+
+testing_training/*

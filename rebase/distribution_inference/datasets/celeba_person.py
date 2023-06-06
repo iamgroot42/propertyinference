@@ -2,11 +2,9 @@ import os
 from distribution_inference.defenses.active.shuffle import ShuffleDefense
 import pandas as pd
 from torchvision import transforms
-import gc
 from PIL import Image
 import torch as ch
 import numpy as np
-from tqdm import tqdm
 import torch.nn as nn
 from typing import List
 
@@ -62,11 +60,15 @@ class DatasetInformation(base.DatasetInformation):
         return model
 
     def _victim_adv_identity_split(self, identities, adv_ratio: float):
-        people = list(set(identities))
+        # Extract unique people
+        people = np.unique(identities)
+        # Shuffle them
         people_shuffled = np.random.permutation(people)
+        # Get 'people used by adv' from this
         split_adv = int(len(people_shuffled) * adv_ratio)
-        people_adv = people[:split_adv]
-        people_victim = people[split_adv:]
+        people_adv = people_shuffled[:split_adv]
+        # And the rest to be used by victim
+        people_victim = people_shuffled[split_adv:]
 
         return people_adv, people_victim
 
@@ -93,9 +95,6 @@ class DatasetInformation(base.DatasetInformation):
 
         # 10,177 identities in total
         # Make a 80:20 split of victim:adversary identities
-        # Idea 1: Always to to infer a random self.holdout_people people from training
-        # Idea 2: Always include the same self.holdout_people random people in all victim model training,
-        # and infer their presence (more streamlined approach)
         # Adversary uses its 20 split to perform shadow training and/or launching attacks
         # Load metadata files
         splits = self._get_splits()
@@ -106,14 +105,16 @@ class DatasetInformation(base.DatasetInformation):
             splits[1].values == 0, splits[1].values == 1)
         test_mask = splits[1].values == 2
 
-        train_map = {p: np.sum(ids[train_mask] == p) for p in np.unique(ids[train_mask])}
-        test_map = {p: np.sum(ids[test_mask] == p) for p in np.unique(ids[test_mask])}
+        vals, counts = np.unique(ids[train_mask], return_counts=True)
+        train_map = dict(zip(vals, counts))
+        vals, counts = np.unique(ids[test_mask], return_counts=True)
+        test_map = dict(zip(vals, counts))
 
         # Discard people where < self.min_per_person images per person present
         train_map_keep = [k for k, v in train_map.items() if v >= self.min_per_person]
-        train_mask = np.logical_and(train_mask, np.isin(ids, train_map_keep))
+        train_mask = np.isin(ids, train_map_keep)
         test_map_keep = [k for k, v in test_map.items() if v > self.min_per_person]
-        test_mask = np.logical_and(test_mask, np.isin(ids, test_map_keep))
+        test_mask = np.isin(ids, test_map_keep)
 
         # Splits on test data
         test_adv_people, test_victim_people = self._victim_adv_identity_split(
@@ -127,22 +128,22 @@ class DatasetInformation(base.DatasetInformation):
         # These are the people that will be used as targets for inferring membership in victim model training
         # For 'always used' pick out of people that have at least self.audit_per_person + self.min_per_person images
         # So that after reserving self.audit_per_person images for auditing, we have at least self.min_per_person images for training
-        train_victim_always_used = []
+        holdout_people_data = []
         for p in train_victim_people:
             if train_map[p] >= self.audit_per_person + self.min_per_person:
-                train_victim_always_used.append(p)
-        train_victim_always_used = np.array(train_victim_always_used)
-        np.random.shuffle(train_victim_always_used)
-        train_victim_always_used = train_victim_always_used[:self.holdout_people]
-        train_victim_people = list(set(train_victim_people) - set(train_victim_always_used))
+                holdout_people_data.append(p)
+        holdout_people_data = np.array(holdout_people_data)
+        np.random.shuffle(holdout_people_data)
+        holdout_people_data = holdout_people_data[:self.holdout_people]
+        train_victim_people = list(set(train_victim_people) - set(holdout_people_data))
 
-        # For train_victim_always_used, save 'self.holdout_people' images for each person as those not used in training
+        # For holdout_people_data, save 'self.holdout_people' images for each person as those not used in training
         # And are esentially available with adversary for 'auditing'
         filenames = np.array(splits.index.tolist())
 
         # Pick filenames where identity is in wanted_people
         always_used_train, always_used_audit = [], []
-        for person in train_victim_always_used:
+        for person in holdout_people_data:
             shortlisted = filenames[ids == person]
             np.random.shuffle(shortlisted)
             for_training = shortlisted[self.audit_per_person:]
@@ -202,6 +203,9 @@ class CelebAPerson(base.CustomDataset):
         self.filenames_list = filenames_list
         self.person_of_interest_indicator = person_of_interest_indicator
 
+        if self.person_of_interest_indicator is not None:
+            assert len(self.person_of_interest_indicator) == len(self.filenames_list), "Person of interest indicator must be same length as filenames list!"
+
         if remap_classes:
             # Transform random labels to (0, n)
             # Keep track of mapping
@@ -216,7 +220,6 @@ class CelebAPerson(base.CustomDataset):
             self.filenames_list = self.filenames_list[shuffle_order]
             self.labels_list = self.labels_list[shuffle_order]
             if self.person_of_interest_indicator is not None:
-                assert len(self.person_of_interest_indicator) == len(self.filenames_list), "Person of interest indicator must be same length as filenames list!"
                 self.person_of_interest_indicator = self.person_of_interest_indicator[shuffle_order]
 
         self.num_samples = len(self.filenames_list)
@@ -228,8 +231,6 @@ class CelebAPerson(base.CustomDataset):
         return self.labels_list
 
     def __getitem__(self, idx):
-        # TODO: Third argument keeps track of 'member or not'
-
         # Open image
         filename = self.filenames_list[idx]
         x = Image.open(os.path.join(
@@ -288,6 +289,10 @@ class CelebaPersonWrapper(base.CustomDatasetWrapper):
         self.train_transforms = transforms.Compose(train_transforms)
 
         # Define number of people to pick for train, test
+        # self._prop_wise_subsample_sizes = {
+        #     "adv": (2500, 200),
+        #     "victim": (2500, 200)
+        # }
         self._prop_wise_subsample_sizes = {
             "adv": (800, 50),
             "victim": (3500, 300)
@@ -344,7 +349,7 @@ class CelebaPersonWrapper(base.CustomDatasetWrapper):
     def load_specified_data(self, people_ids: List[int]):
         # Adjust number of people to sample from pool
         filenames, labels = self._pick_these_people(people_ids)
-        
+
         ds_use = CelebAPerson(
             filenames, labels,
             remap_classes=True,
@@ -459,9 +464,9 @@ class CelebaPersonWrapper(base.CustomDatasetWrapper):
                     shuffle: bool = True,
                     eval_shuffle: bool = False,
                     val_factor: int = 1,
-                    num_workers: int = 1,
+                    num_workers: int = 2,
                     prefetch_factor: int = 2,
-                    pin_memory: bool=True,
+                    pin_memory: bool = True,
                     primed_for_training: bool=True,
                     indexed_data=None):
         self.ds_train, self.ds_val = self.load_data(primed_for_training=primed_for_training)

@@ -9,7 +9,6 @@ import torch.nn.functional as F
 
 from distribution_inference.utils import warning_string
 
-
 from tqdm import tqdm
 
 
@@ -76,9 +75,10 @@ def train_epoch(loader, model, optimizer, epoch: int,
                 n_way: int, k_shot: int, num_query: int,
                 verbose: bool = True):
     model.train()
+
     tot_loss, tot_acc, tot_items = 0, 0, 0
     # The loader here has len(1) but we sample from it multiple times
-    train_num_task = 200
+    train_num_task = 150 #200
 
     iterator = range(train_num_task)
     if verbose:
@@ -218,7 +218,8 @@ def train(model, loaders, train_config: TrainConfig):
     if val_loader is not None:
         test_loss, test_acc = validate_epoch(
             test_loader,
-            model,
+            model, n_way=n_way,
+            k_shot=k_shot, num_query=num_query_test,
             verbose=False)
     else:
         test_loss, test_acc = vloss, vacc
@@ -230,4 +231,4 @@ def train(model, loaders, train_config: TrainConfig):
     if train_config.get_best:
         return best_model, (test_loss, test_acc)
 
-    return test_loss, test_acc
+    return model, (test_loss, test_acc)

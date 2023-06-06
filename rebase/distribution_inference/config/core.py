@@ -265,6 +265,8 @@ class TrainConfig(Serializable):
     """Use early stopping?"""
     save_indices_used: Optional[bool] = False
     """Save extra information (indices of train/test data used)?"""
+    gradient_accumulation_steps: Optional[int] = 1
+    """Number of steps to accumulate gradients over (applies to HF training)"""
 
 
 @dataclass

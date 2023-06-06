@@ -182,6 +182,7 @@ def get_vic_adv_preds_on_distr_relation_net(
     """
         ds_obj should correspond here to adversary data with subject of interested 'included'
     """
+    ds_obj, ds_vic_1, ds_vic_2 = ds_obj
 
     # Get 'num_support' information from ds_obj
     num_support = ds_obj.relation_config.k_shot
@@ -198,14 +199,15 @@ def get_vic_adv_preds_on_distr_relation_net(
         # Only append images where prop_labels is 1
         imgs.append(batch[0][prop_labels == 1])
     imgs = ch.cat(imgs, 0)
-    split = _make_gallery_query_split(imgs, num_support, num_query)
+    split = _make_gallery_query_split(imgs, num_support)
     relation_values_1, relation_values_2 = [], []
+    """
     # Populate these values for models trained with and without subject of interest
     for model in tqdm(models_vic[0], desc="Generating predictions for victim (0)"):
         relations = get_relation_preds([split[0]], split[1], model).detach().cpu().numpy()
         if use_similarities:
             sims = image_similarities(split[0], split[1])
-            sorting_order = np.argsort(sims)
+            sorting_order = np.argsort(sims)[-num_query:]
             relation_values_1.append(np.concatenate((relations[sorting_order, 0], sims[sorting_order])))
         else:
             relation_values_1.append(relations[:, 0])
@@ -213,10 +215,40 @@ def get_vic_adv_preds_on_distr_relation_net(
         relations = get_relation_preds([split[0]], split[1], model).detach().cpu().numpy()
         if use_similarities:
             sims = image_similarities(split[0], split[1])
-            sorting_order = np.argsort(sims)
+            sorting_order = np.argsort(sims)[-num_query:]
             relation_values_2.append(np.concatenate((relations[sorting_order, 0], sims[sorting_order])))
         else:
             relation_values_2.append(relations[:, 0])
+    """
+    for (model, train_ids) in tqdm(zip(models_vic[0][0], models_vic[0][1][0]), desc="Generating predictions for victim (0)", total=len(models_vic[0][0])):
+        loader_members = ds_vic_1.get_specified_loader(
+            train_ids, shuffle=True, batch_size=batch_size)
+        non_members = ds_vic_1.get_non_members(train_ids)
+        loader_non_members = ds_vic_1.get_specified_loader(
+            non_members, shuffle=True, batch_size=batch_size)
+        num_task = 100
+        splits_member = make_gallery_query_splits(loader_members, num_support=num_support, num_task=num_task, num_query=num_query)
+        splits_non_member = make_gallery_query_splits(loader_non_members, num_support=num_support, num_task=num_task, num_query=num_query)
+        for split in splits_non_member:
+            relations = get_relation_preds(
+                [split[0]], split[1], model).detach().cpu().numpy()
+            if use_similarities:
+                sims = image_similarities(split[0], split[1])
+                sorting_order = np.argsort(sims)[-num_query:]
+                relation_values_1.append(np.concatenate(
+                    (relations[sorting_order, 0], sims[sorting_order])))
+            else:
+                relation_values_1.append(relations[:, 0])
+        for split in splits_member:
+            relations = get_relation_preds(
+                [split[0]], split[1], model).detach().cpu().numpy()
+            if use_similarities:
+                sims = image_similarities(split[0], split[1])
+                sorting_order = np.argsort(sims)[-num_query:]
+                relation_values_2.append(np.concatenate(
+                    (relations[sorting_order, 0], sims[sorting_order])))
+            else:
+                relation_values_2.append(relations[:, 0])
 
     # Generate "vectors" for adversary models
     # For this scenario, models_adv[0] is good enough
@@ -229,7 +261,7 @@ def get_vic_adv_preds_on_distr_relation_net(
         loader_non_members = ds_obj.get_specified_loader(
             non_members, shuffle=True, batch_size=batch_size)
         # Get random gallery-query splts for each person
-        num_task = 10
+        num_task = 100 #10
         splits_member = make_gallery_query_splits(loader_members, num_support=num_support, num_task=num_task, num_query=num_query)
         splits_non_member = make_gallery_query_splits(loader_non_members, num_support=num_support, num_task=num_task, num_query=num_query)
         # Get model outputs
@@ -237,7 +269,7 @@ def get_vic_adv_preds_on_distr_relation_net(
             relations = get_relation_preds([split[0]], split[1], model).detach().cpu().numpy()
             if use_similarities:
                 sims = image_similarities(split[0], split[1])
-                sorting_order = np.argsort(sims)
+                sorting_order = np.argsort(sims)[-num_query:]
                 preds_adv_1.append(np.concatenate((relations[sorting_order, 0], sims[sorting_order])))
             else:
                 preds_adv_1.append(relations[:, 0])
@@ -245,7 +277,7 @@ def get_vic_adv_preds_on_distr_relation_net(
             relations = get_relation_preds([split[0]], split[1], model).detach().cpu().numpy()
             if use_similarities:
                 sims = image_similarities(split[0], split[1])
-                sorting_order = np.argsort(sims)
+                sorting_order = np.argsort(sims)[-num_query:]
                 preds_adv_2.append(np.concatenate((relations[sorting_order, 0], sims[sorting_order])))
             else:
                 preds_adv_2.append(relations[:, 0])
@@ -272,7 +304,7 @@ def image_similarities(gallery, query):
     """
     similarities = []
     for gal_img in gallery:
-        sims = ch.cosine_similarity(gal_img.view(1, -1), query.view(query.shape[0], -1), dim=1)
+        sims = ch.cosine_similarity(gal_img.view(1, -1)/2 + 0.5, query.view(query.shape[0], -1)/2 + 0.5, dim=1)
         similarities.append(sims)
     similarities = ch.mean(ch.stack(similarities, 0), 0)
     return similarities.numpy()
@@ -662,7 +694,9 @@ def get_vic_adv_preds_on_distr(
         if models_vic[0][0][0].is_graph_model:
             are_graph_models = True
     else:
-        if models_vic[0][0].is_graph_model:
+        # if models_vic[0][0].is_graph_model:
+        #     are_graph_models = True
+        if models_vic[0][0][0].is_graph_model:
             are_graph_models = True
     
     # Check if models are relation-net based
@@ -671,7 +705,9 @@ def get_vic_adv_preds_on_distr(
         if models_vic[0][0][0].is_relation_based:
             are_relation_net_models = True
     else:
-        if models_vic[0][0].is_relation_based:
+        # if models_vic[0][0].is_relation_based:
+        #     are_relation_net_models = True
+        if models_vic[0][0][0].is_relation_based:
             are_relation_net_models = True
     if are_relation_net_models:
         return get_vic_adv_preds_on_distr_relation_net(models_vic, models_adv, ds_obj, batch_size)

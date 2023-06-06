@@ -611,12 +611,12 @@ class CustomDatasetWrapper:
         return dims, feature_vectors
 
 
-def _make_gallery_query_split(images, num_support: int, num_query: int):
+def _make_gallery_query_split(images, num_support: int):
     # Randomly pick 'num_support' from v, without replacement
     permutation = ch.randperm(images.shape[0])
     support = images[permutation[:num_support]]
-    query = images[permutation[num_support:num_support+num_query]]
-    return (support, query)
+    query_pool = images[permutation[num_support:]]
+    return (support, query_pool)
 
 
 def make_gallery_query_splits(loader,
@@ -642,7 +642,7 @@ def make_gallery_query_splits(loader,
     for k, v in image_map.items():
         # Only consider cases where more images than num_support are available
         if len(v) >= num_support + num_query:
-            pairs.append(_make_gallery_query_split(v, num_support, num_query))
+            pairs.append(_make_gallery_query_split(v, num_support))
             added += 1
         if added >= num_task:
             break
