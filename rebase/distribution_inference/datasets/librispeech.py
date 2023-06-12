@@ -60,8 +60,8 @@ class DatasetInformation(base.DatasetInformation):
         #if not cpu:
         #    model.model = model.model.cuda()
         # 
-        if for_training and model_compile_supported():
-           model = ch.compile(model)
+        #if for_training and model_compile_supported():
+        #   model = ch.compile(model)
 
         return model
 
@@ -122,12 +122,12 @@ class DatasetInformation(base.DatasetInformation):
         np.savetxt(os.path.join(self.base_data_dir, "splits_person", "victim", "train.txt"), remaining_speaker_ids_indices, delimiter=',')
         np.savetxt(os.path.join(self.base_data_dir, "splits_person", "audit_speaker_ids.txt"), audit_speaker_ids, delimiter=',')
     
-    def prepare_processed_data(self, name: str):
+    def prepare_processed_data(self, model_arch: str):
         """
             One-time processing to save time when training multiple models
         """
-        tokenizer = WhisperTokenizer.from_pretrained("openai/" + name, language="English", task="transcribe")
-        feature_extractor = WhisperFeatureExtractor.from_pretrained("openai/" + name)
+        tokenizer = WhisperTokenizer.from_pretrained("openai/" + model_arch, language="English", task="transcribe")
+        feature_extractor = WhisperFeatureExtractor.from_pretrained("openai/" + model_arch)
         
         # Process data for all splits
         set_start_method("spawn")
@@ -135,12 +135,12 @@ class DatasetInformation(base.DatasetInformation):
         num_procs = [20, 4, 4, 20]
         for (n_proc, split) in zip(num_procs, splits):
             # Skip if this split has already been processed
-            if os.path.exists(os.path.join(self.base_data_dir, "processed", "clean", name, split)):
+            if os.path.exists(os.path.join(self.base_data_dir, "processed", "clean", model_arch, split)):
                 continue
 
             dataset = load_dataset("librispeech_asr", "clean", split=split, cache_dir=self.base_data_dir)
             dataset = models_asr.whisper_asr_process_data(dataset, feature_extractor, tokenizer, sampling_rate=16000, n_proc=n_proc)
-            dataset.save_to_disk(os.path.join(self.base_data_dir, "processed", "clean", name, split))
+            dataset.save_to_disk(os.path.join(self.base_data_dir, "processed", "clean", model_arch, split))
             
             # Clean-up cache - they fill up faster than you'd think
             dataset.cleanup_cache_files()
@@ -205,7 +205,7 @@ class LibriSpeechWrapper(base.CustomDatasetWrapper):
 
         self._prop_wise_subsample_sizes = {
             # "adv": (220, 30), # Out of (251, 40)
-            "adv": (150, 30), # Out of (251, 40)
+            "adv": (200, 30), # Out of (251, 40)
             "victim": (750, 30) # Out of (901, 40)
         }
         self.n_people, self.n_people_test = self._prop_wise_subsample_sizes[self.split]

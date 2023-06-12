@@ -1,5 +1,5 @@
 from transformers import WhisperFeatureExtractor
-from transformers import WhisperTokenizer
+from transformers import WhisperTokenizer, WhisperTokenizerFast
 from transformers import WhisperProcessor
 from transformers import WhisperForConditionalGeneration
 
@@ -14,7 +14,7 @@ class WhisperASR(BaseModel):
         super().__init__(is_asr_model=True, is_hf_model=True)
         self.name = name
         self.feature_extractor = WhisperFeatureExtractor.from_pretrained(name)
-        self.tokenizer = WhisperTokenizer.from_pretrained(name, language="English", task="transcribe")
+        self.tokenizer = WhisperTokenizerFast.from_pretrained(name, language="English", task="transcribe")
         self.processor = WhisperProcessor.from_pretrained(name, language="English", task="transcribe")
         self.model = WhisperForConditionalGeneration.from_pretrained(name)
 
@@ -33,11 +33,6 @@ class WhisperASR(BaseModel):
             Simply forward to self.model
         """
         return self.model(**kwargs)
-
-    # def process_data(self, dataset, n_proc: int):
-    #     # Set to 16kHz
-    #     sampling_rate = 16000
-    #     return whisper_asr_process_data(dataset, self.feature_extractor, self.tokenizer, sampling_rate, n_proc)
 
 
 class WhisperTiny(WhisperASR):

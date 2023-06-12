@@ -4,7 +4,11 @@ from transformers import Seq2SeqTrainer
 from distribution_inference.config import TrainConfig
 
 import torch as ch
+import numpy as np
+from tqdm import tqdm
 import evaluate
+
+from whisper.normalizers import EnglishTextNormalizer
 
 from dataclasses import dataclass
 from typing import Any, Dict, List, Union
@@ -45,12 +49,10 @@ class DataCollatorSpeechSeq2SeqWithPadding:
 
 def train(model, datasets, train_config: TrainConfig):
     train_dataset, eval_dataset = datasets
-
-    # Prepare dataset (processing)
-    # set_start_method("spawn")
-    # model.process_data(eval_dataset, n_proc=4)
-    # model.process_data(train_dataset, n_proc=20)
     metric = evaluate.load("wer")
+
+    # Applicable for cheetah run. Freeeze encoder
+    model.model.freeze_encoder()
 
     # Construct training args
     gradient_checkpointing = True
@@ -60,7 +62,69 @@ def train(model, datasets, train_config: TrainConfig):
         gradient_accumulation_steps=train_config.gradient_accumulation_steps,  # increase by 2x for every 2x decrease in batch size
         learning_rate=train_config.learning_rate,
         weight_decay=train_config.weight_decay,
-        warmup_steps=1000,
+        warmup_steps=500,
+        # max_steps=5000,
+        max_steps=train_config.epochs,
+        logging_steps=25,
+        # eval_steps=1000, # Set to 1000 later (or even 5000)
+        eval_steps=500,
+        evaluation_strategy="steps",
+        gradient_checkpointing=gradient_checkpointing,
+        fp16=True,
+        per_device_eval_batch_size=train_config.batch_size // 2,
+        predict_with_generate=True,
+        generation_max_length=225,
+        save_strategy="no",
+        optim="adamw_torch",
+        report_to=["tensorboard"],
+        load_best_model_at_end=train_config.get_best,
+        metric_for_best_model="wer",
+        greater_is_better=False,
+        push_to_hub=False,
+        torch_compile=True,
+        dataloader_num_workers=4
+    )
+    """
+    training_args = Seq2SeqTrainingArguments(
+        output_dir="./testing_training",
+        per_device_train_batch_size=train_config.batch_size,
+        gradient_accumulation_steps=train_config.gradient_accumulation_steps,  # increase by 2x for every 2x decrease in batch size
+        learning_rate=train_config.learning_rate,
+        weight_decay=train_config.weight_decay,
+        warmup_steps=500,
+        num_train_epochs=train_config.epochs,
+        gradient_checkpointing=gradient_checkpointing,
+        # use_cache=False if gradient_checkpointing else True,
+        fp16=True,
+        per_device_eval_batch_size=8, #train_config.batch_size // 2,
+        predict_with_generate=True,
+        generation_max_length=225,
+        save_strategy="no",
+        logging_strategy="epoch",
+        evaluation_strategy="epoch",
+        optim="adamw_torch",
+        # evaluation_strategy="steps",
+        # eval_steps=10,
+        report_to=["tensorboard"],
+        load_best_model_at_end=train_config.get_best,
+        metric_for_best_model="wer",
+        greater_is_better=False,
+        push_to_hub=False,
+        torch_compile=True,
+        dataloader_num_workers=2
+    )
+    """
+
+    """
+    # New args
+    gradient_checkpointing = True
+    training_args = Seq2SeqTrainingArguments(
+        output_dir="./testing_training",
+        per_device_train_batch_size=train_config.batch_size,
+        gradient_accumulation_steps=train_config.gradient_accumulation_steps,  # increase by 2x for every 2x decrease in batch size
+        learning_rate=train_config.learning_rate,
+        weight_decay=train_config.weight_decay,
+        warmup_steps=0,
         num_train_epochs=train_config.epochs,
         gradient_checkpointing=gradient_checkpointing,
         # use_cache=False if gradient_checkpointing else True,
@@ -76,7 +140,9 @@ def train(model, datasets, train_config: TrainConfig):
         metric_for_best_model="wer",
         greater_is_better=False,
         push_to_hub=False,
+        lr_scheduler_type="constant"
     )
+    """
 
     # Init data collator
     data_collator = DataCollatorSpeechSeq2SeqWithPadding(processor=model.processor)
@@ -91,8 +157,9 @@ def train(model, datasets, train_config: TrainConfig):
 
         # we do not want to group tokens when computing the metrics
         pred_str = model.tokenizer.batch_decode(pred_ids, skip_special_tokens=True)
+        pred_str = [x.lstrip().strip() for x in pred_str]
         label_str = model.tokenizer.batch_decode(label_ids, skip_special_tokens=True)
-
+        
         wer = 100 * metric.compute(predictions=pred_str, references=label_str)
 
         return {"wer": wer}

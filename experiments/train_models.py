@@ -58,7 +58,7 @@ if __name__ == "__main__":
         data_config.name)(train_config.save_every_epoch)
     # Process data (one time per model type) if librispeech
     if data_config.name == "librispeech":
-        ds_info.prepare_processed_data(config.model_arch)
+        ds_info.prepare_processed_data(train_config.model_arch)
 
     exp_name = "_".join([config.data_config.split,
                         config.data_config.prop,
