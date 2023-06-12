@@ -139,7 +139,7 @@ class CustomDatasetWrapper:
                  skip_data: bool = False,
                  label_noise: float = 0.0,
                  is_graph_data: bool = False,
-                 shuffle_defense: ShuffleDefense = None,):
+                 shuffle_defense: ShuffleDefense = None):
         """
             self.ds_train and self.ds_val should be set to
             datasets to be used to train and evaluate.
@@ -157,6 +157,7 @@ class CustomDatasetWrapper:
         self.prune = data_config.prune
         self.is_graph_data = is_graph_data
         self.adv_use_frac = data_config.adv_use_frac
+        self.relation_config = data_config.relation_config
 
         # Either set ds_train and ds_val here
         # Or set them inside get_loaders
@@ -171,13 +172,29 @@ class CustomDatasetWrapper:
     def get_used_indices(self):
         raise NotImplementedError("Dataset does not implement get_used_indices")
 
+    def load_specified_data(self, people_ids: List):
+        raise NotImplementedError("Dataset does not implement load_specified_data")
+    
+    def get_specified_loader(self, indices: List,
+                             batch_size: int,
+                             shuffle: bool = True,):
+        ds_use = self.load_specified_data(indices)
+        loader_use = DataLoader(
+            ds_use,
+            batch_size=batch_size,
+            shuffle=shuffle,
+            worker_init_fn=utils.worker_init_fn
+        )
+        return loader_use
+
     def get_loaders(self, batch_size: int,
                     shuffle: bool = True,
                     eval_shuffle: bool = False,
                     val_factor: float = 1,
                     num_workers: int = 0,
                     prefetch_factor: int = 2,
-                    train_sampler: Optional[Sampler] = None,):
+                    train_sampler: Optional[Sampler] = None,
+                    pin_memory: bool = False,):
         
         if self.shuffle_defense:
             # This function should return new loaders at every call
@@ -222,7 +239,7 @@ class CustomDatasetWrapper:
             shuffle=shuffle,
             num_workers=num_workers,
             worker_init_fn=utils.worker_init_fn,
-            #pin_memory=True,
+            pin_memory=pin_memory,
             prefetch_factor=prefetch_factor
         )
 
@@ -232,7 +249,7 @@ class CustomDatasetWrapper:
             shuffle=eval_shuffle,
             num_workers=num_workers,
             worker_init_fn=utils.worker_init_fn,
-            #pin_memory=True,
+            pin_memory=pin_memory,
             prefetch_factor=prefetch_factor
         )
 
@@ -300,6 +317,9 @@ class CustomDatasetWrapper:
     
     def set_augment_process_fn(self, data):
         self.ds_train.set_augment_process_fn(data)
+    
+    def override_num_samples(self, num_samples: int):
+        self.cwise_samples = num_samples
 
     def _get_model_paths(self,
                          train_config: TrainConfig,
@@ -346,6 +366,7 @@ class CustomDatasetWrapper:
             shuffle=shuffle,
             model_arch=model_arch,
             custom_models_path=custom_models_path)
+        relation_based_models = train_config.data_config.relation_config is not None
         i = 0
         n_failed = []
         models = []
@@ -418,8 +439,12 @@ class CustomDatasetWrapper:
                     # Has before/after information
                     if type(model) == tuple:
                         models.append(model[0])
-                        before_ids.append((model[1][0][0], model[1][1][0]))
-                        after_ids.append((np.sort(model[1][0][1]), np.sort(model[1][1][1])))
+                        if relation_based_models:
+                            before_ids.append(model[1][0])
+                            after_ids.append(model[1][1])
+                        else:
+                            before_ids.append((model[1][0][0], model[1][1][0]))
+                            after_ids.append((np.sort(model[1][0][1]), np.sort(model[1][1][1])))
                     else:
                         models.append(model)
                     i += 1
@@ -584,3 +609,41 @@ class CustomDatasetWrapper:
 
         feature_vectors = np.array(feature_vectors, dtype='object')
         return dims, feature_vectors
+
+
+def _make_gallery_query_split(images, num_support: int):
+    # Randomly pick 'num_support' from v, without replacement
+    permutation = ch.randperm(images.shape[0])
+    support = images[permutation[:num_support]]
+    query_pool = images[permutation[num_support:]]
+    return (support, query_pool)
+
+
+def make_gallery_query_splits(loader,
+                              num_support: int,
+                              num_task: int,
+                              num_query: int):
+    image_map = {}
+    for i, batch in enumerate(loader):
+        images = batch[0]
+        labels = batch[1]
+        for l in labels:
+            l_ = l.item()
+            if l_ not in image_map:
+                image_map[l_] = []
+            image_map[l_].append(images[labels == l_])
+        if len(image_map) >= num_task and sum([len(v) >= num_support + num_query for v in image_map.values()]) >= num_task:
+            break
+    for k in image_map.keys():
+        image_map[k] = ch.cat(image_map[k], dim=0)
+    # Break this map down into a list of (support, query) images
+    pairs = []
+    added = 0
+    for k, v in image_map.items():
+        # Only consider cases where more images than num_support are available
+        if len(v) >= num_support + num_query:
+            pairs.append(_make_gallery_query_split(v, num_support))
+            added += 1
+        if added >= num_task:
+            break
+    return pairs

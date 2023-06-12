@@ -20,7 +20,6 @@ from distribution_inference.training.core import train
 import distribution_inference.attacks.whitebox.finetune.utils as ft_utils
 
 
-
 class FinetuneAttack(Attack):
     def __init__(self,
                  dims: List[int],
@@ -48,6 +47,8 @@ class FinetuneAttack(Attack):
         # TODO: DO something about the learning rate (perhaps start with a lower one?)
         train_config_ft = replace(
             train_config, epochs=self.config.finetune_config.num_ft_epochs,
+            learning_rate=self.config.finetune_config.learning_rate,
+            weight_decay=self.config.finetune_config.weight_decay,
             verbose=False, get_best=False, quiet=True)
 
         # Finetune copies of model on data from both distributions
@@ -105,8 +106,28 @@ class FinetuneAttack(Attack):
             loss_1 = ft_utils.get_loss(model_1, d1_loader, binary=binary, regression=regression)
             relative_change_0 = (loss_ref_0 - loss_0) / loss_ref_0
             relative_change_1 = (loss_ref_1 - loss_1) / loss_ref_1
+
+            loss_0_on_1 = ft_utils.get_loss(model_0, d1_loader, binary=binary, regression=regression)
+            loss_1_on_0 = ft_utils.get_loss(model_1, d0_loader, binary=binary, regression=regression)
+
+            # diff_ratio_0 = (loss_ref_0 - loss_0) / (loss_ref_1 - loss_0_on_1)
+            # diff_ratio_1 = (loss_ref_1 - loss_1) / (loss_ref_0 - loss_1_on_0)
+
+            diff_ratio_0 = (loss_ref_0 - loss_0) - (loss_ref_1 - loss_0_on_1)
+            diff_ratio_1 = (loss_ref_1 - loss_1) - (loss_ref_0 - loss_1_on_0)
+            diff_ratio_0 *= loss_ref_1 / loss_ref_0
+            diff_ratio_1 *= loss_ref_0 / loss_ref_1
+            prediction = (diff_ratio_0 > diff_ratio_1) * 1
+
+            # Use this new ratio-based change criteriot
+            # prediction = 0 if abs(diff_ratio_0) < abs(diff_ratio_1) else 1
+            # TODO: Decide if blindly converting to abs is the right way, or to use dynamic rounding-off
+
+            # Temporary: return all available data, save for later analysis
+            # prediction = [diff_ratio_0, diff_ratio_1, loss_ref_0, loss_0, loss_ref_1, loss_1, loss_0_on_1, loss_1_on_0]
+
             # If loss improved by a lot, data was probably not seen by model, so must be other distribution
-            prediction = 1 if relative_change_0 > relative_change_1 else 0
+            # prediction_ = 1 if relative_change_0 > relative_change_1 else 0
         return prediction
 
     def _execute_individual_attack(self, model, loaders, train_config):
@@ -141,11 +162,14 @@ class FinetuneAttack(Attack):
         if train_config is None:
             raise ValueError("Please provide train_config to use for the given victim models (finetuning)!")
         # Could add later as a calibration step, but for now attack is free of shadow models
-
         accuracy, count = 0, 0
         iterator = tqdm(test_loader, desc="Finetuning models for attack")
+        # with open("run_results_8.txt", "w") as f:
         for model, label in iterator:
             prediction = self._execute_individual_attack(model, (data_loaders_0, data_loaders_1), train_config)
+            # prediction = [label] + prediction
+            # f.write(",".join([str(x) for x in prediction]) + "\n")
+            # continue
             accuracy += (prediction == label)
             count += 1
             iterator.set_description("Finetuning models for attack (Accuracy: {:.2f}%)".format(accuracy / count * 100))

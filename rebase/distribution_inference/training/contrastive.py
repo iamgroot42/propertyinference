@@ -11,6 +11,7 @@ from torch.optim.lr_scheduler import StepLR
 
 from distribution_inference.training.utils import FocalLoss
 from distribution_inference.config import TrainConfig
+from distribution_inference.datasets.utils import get_match_scores
 
 from distribution_inference.utils import warning_string
 
@@ -76,6 +77,80 @@ def train_epoch(loader, model, criterion, optimizer, epoch, verbose: bool = True
                 epoch, tot_loss / tot_items, tot_acc / tot_items))
 
     return tot_loss / tot_items, tot_acc / tot_items
+
+
+@ch.no_grad()
+def validate_epoch_gallery_based(loader, model, criterion,
+                                 verbose: bool = True,
+                                 get_preds: bool = False,
+                                 is_proto: bool = False,):
+    """
+        Valiation for scenario where gallery images are provided via loader
+        in the form of (test_loader, gallery_loader). Prediction can be either
+        siamese-based (maxiumum similarity) or protonet-based (similarity with mean
+        embedding of class).
+    """
+    model.eval()
+    test_loader, gallery_loader = loader
+    # Collect embeddings and labels for gallery images
+    gallery_embeddings, gallery_labels = [], []
+    for batch in gallery_loader:
+        data_input = batch[0].cuda()
+        lbls = batch[1].numpy()
+        embd = model(data_input, only_embedding=True)
+        embd = embd.detach().cpu()
+        gallery_embeddings.append(embd)
+        gallery_labels.append(lbls)
+    gallery_embeddings = ch.cat(gallery_embeddings, dim=0)
+    gallery_labels = np.concatenate(gallery_labels, axis=0)
+    num_classes = len(np.unique(gallery_labels))
+
+    vacc, vloss, nitems = 0, 0, 0
+    preds_collected = []
+    if is_proto:
+        # Compute mean embedding for each class
+        class_means = ch.zeros((num_classes, gallery_embeddings.shape[1]))
+        for i in range(num_classes):
+            class_means[i] = ch.mean(gallery_embeddings[gallery_labels == i], dim=0)
+        gallery_embeddings = class_means
+        gallery_labels = np.arange(num_classes)
+
+    iterator = test_loader
+    if verbose:
+        iterator = tqdm(iterator, desc="Validation")
+    for batch in iterator:
+        data_input = batch[0].cuda()
+        lbls = batch[1].numpy()
+        embd = model(data_input, only_embedding=True)
+        embd = embd.detach().cpu()
+        match_scores = get_match_scores(embd, gallery_embeddings, apply_softmax=False)
+        # Treat match_scores as logits and compute loss
+        batch_size = data_input.size(0)
+        # TODO: Below operation valid only for protonet-based preds
+        if is_proto:
+            vloss += criterion(match_scores, ch.tensor(lbls)).item() * batch_size
+        else:
+            raise ValueError("Only protonet-based predictions are supported (right now)")
+        # Get predictions
+        preds = gallery_labels[ch.argmax(match_scores, dim=1).numpy()]
+        if get_preds:
+            preds_collected.append(preds)
+        vacc += np.sum((preds == lbls).astype(int))
+        nitems += batch_size
+        if verbose:
+            iterator.set_description('[Validation] Loss: %.5f, Acc: %.4f' % (vloss / nitems, vacc / nitems))
+    
+    # Loss barely moves when accuracy jumps from 0 to 80+ - surely something is wrong?
+    
+    if get_preds:
+        preds_collected = np.concatenate(preds_collected, axis=0)
+    
+    vacc /= nitems
+    vloss /= nitems
+    
+    if get_preds:
+        return vloss, vacc, preds_collected
+    return vloss, vacc
 
 
 @ch.no_grad()
@@ -151,7 +226,7 @@ def validate_epoch(loader, model, criterion,
     return vloss, vacc
 
 
-def train(model, loaders, train_config: TrainConfig, input_is_list, extra_options):
+def train(model, loaders, train_config: TrainConfig):
     # Extract loaders
     if len(loaders) == 2:
         train_loader, test_loader = loaders
@@ -166,6 +241,9 @@ def train(model, loaders, train_config: TrainConfig, input_is_list, extra_option
         use_loader_for_metric_log = val_loader
     else:
         use_loader_for_metric_log = test_loader
+    
+    # If gallery-based, no 'val loss'
+    gallery_based_val = type(use_loader_for_metric_log) == tuple
 
     # Define optimizer
     if train_config.parallel:
@@ -175,7 +253,8 @@ def train(model, loaders, train_config: TrainConfig, input_is_list, extra_option
         optimizer = ch.optim.SGD([{'params': model.model.parameters()}, {'params': model.metric_fc.parameters()}],
                                  lr=train_config.learning_rate, weight_decay=train_config.weight_decay)
 
-    scheduler = StepLR(optimizer, step_size=10, gamma=0.1)
+    scheduler = StepLR(optimizer, step_size=7, gamma=0.1)
+    # scheduler = StepLR(optimizer, step_size=10, gamma=0.1)
     criterion = FocalLoss(gamma=2)
 
     # Define iterator
@@ -183,21 +262,35 @@ def train(model, loaders, train_config: TrainConfig, input_is_list, extra_option
     if not train_config.verbose:
         iterator = tqdm(iterator, desc="Epochs")
 
-    best_loss = np.inf
+    best_loss, best_acc = np.inf, 0
     for i in iterator:
+        vloss, vacc = None, 0.0
         tloss, tacc = train_epoch(train_loader, model, criterion, optimizer, epoch=i, verbose=train_config.verbose)
+        if gallery_based_val:
+            vloss, vacc = validate_epoch_gallery_based(use_loader_for_metric_log, model, criterion,
+                                                       verbose=train_config.verbose,
+                                                       is_proto=train_config.misc_config.contrastive_config.proto_validate)
+        else:
+            vloss, vacc = validate_epoch(use_loader_for_metric_log, model, criterion, verbose=train_config.verbose, compute_similarities=False)
         # vloss, vacc, (same_sim, diff_sim) = validate_epoch(use_loader_for_metric_log, model, criterion, verbose=train_config.verbose, compute_similarities=False)
-        vloss, vacc = validate_epoch(use_loader_for_metric_log, model, criterion, verbose=train_config.verbose, compute_similarities=False)
         if not (train_config.verbose or train_config.quiet):
-            iterator.set_description(
             #     "train_acc: %.2f | val_acc: %.2f | train_loss: %.3f | val_loss: %.3f | cosine(same): %.3f | cosine(diff): %.3f" % (100 * tacc, 100 * vacc, tloss, vloss, same_sim, diff_sim))
             # iterator.set_description(
+            iterator.set_description(
                 "train_acc: %.2f | val_acc: %.2f | train_loss: %.3f | val_loss: %.3f" % (tacc, vacc, tloss, vloss))
+        else:
+            print()
 
-        vloss_compare = vloss
-        if train_config.get_best and vloss_compare < best_loss:
-            best_loss = vloss_compare
-            best_model = deepcopy(model)
+        if gallery_based_val:
+            vacc_compare = vacc
+            if train_config.get_best and vacc_compare > best_acc:
+                best_acc = vacc_compare
+                best_model = deepcopy(model)
+        else:
+            vloss_compare = vloss
+            if train_config.get_best and vloss_compare < best_loss:
+                best_loss = vloss_compare
+                best_model = deepcopy(model)
 
         scheduler.step()
 
@@ -208,6 +301,7 @@ def train(model, loaders, train_config: TrainConfig, input_is_list, extra_option
             verbose=False)
     else:
         test_loss, test_acc = vloss, vacc
+
     # Now that training is over, remove dataparallel wrapper
     if train_config.parallel:
         model = model.module

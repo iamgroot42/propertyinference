@@ -12,13 +12,14 @@ class KLAttack(Attack):
                ground_truth: Tuple[List, List] = None,
                calc_acc: Callable = None,
                epochwise_version: bool = False,
-               not_using_logits: bool = False):
+               not_using_logits: bool = False,
+               contrastive: bool = False):
         assert not (
             self.config.multi2 and self.config.multi), "No implementation for both multi model"
         assert not (
             epochwise_version and self.config.multi2), "No implementation for both epochwise and multi model"
         if not epochwise_version:
-            return self.attack_not_epoch(preds_adv,preds_vic,ground_truth,calc_acc,not_using_logits)
+            return self.attack_not_epoch(preds_adv,preds_vic,ground_truth,calc_acc,not_using_logits,contrastive=contrastive)
         else:
             preds_v = [PredictionsOnDistributions(
                 PredictionsOnOneDistribution(preds_vic.preds_on_distr_1.preds_property_1[i],preds_vic.preds_on_distr_1.preds_property_2[i]),
@@ -26,7 +27,7 @@ class KLAttack(Attack):
             ) for i in range(len(preds_vic.preds_on_distr_2.preds_property_1))]
             accs,preds=[],[]
             for x in preds_v:
-                result = self.attack_not_epoch(preds_adv,x,ground_truth,calc_acc,not_using_logits)
+                result = self.attack_not_epoch(preds_adv,x,ground_truth,calc_acc,not_using_logits,contrastive=contrastive)
                 accs.append(result[0][0])
                 preds.append(result[0][1])
             return [(accs, preds), (None, None), (None,None)]
@@ -36,9 +37,11 @@ class KLAttack(Attack):
                preds_vic: PredictionsOnDistributions,
                ground_truth: Tuple[List, List] = None,
                calc_acc: Callable = None,
-               not_using_logits: bool = False):
+               not_using_logits: bool = False,
+               contrastive: bool = False):
         
         self.not_using_logits = not_using_logits
+        self.contrastive = contrastive
 
         # Get values using data from first distribution
         preds_1_first, preds_1_second = self._get_kl_preds(
@@ -75,6 +78,10 @@ class KLAttack(Attack):
         ka_, kb_ = ka, kb
         kc1_, kc2_ = kc1, kc2
         if not self.not_using_logits:
+            if self.contrastive:
+                # Normalize "preds" to be in [0,1] per model
+                raise ValueError("Contrastive learning not supported for this attack")
+
             if self.config.multi_class:
                 ka_, kb_ = softmax(ka), softmax(kb)
                 kc1_, kc2_ = softmax(kc1), softmax(kc2)

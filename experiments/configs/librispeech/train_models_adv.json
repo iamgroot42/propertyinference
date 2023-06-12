@@ -1,0 +1,20 @@
+{
+    "data_config": {
+        "name": "librispeech",
+        "prop": 0,
+        "classify": null,
+        "split": "adv",
+        "value": false
+    },
+    "epochs": 2000,
+    "offset": 0,
+    "learning_rate": 3.75e-5,
+    "batch_size": 16,
+    "gradient_accumulation_steps": 1,
+    "weight_decay": 0,
+    "num_models": 5,
+    "get_best": false,
+    "verbose": false,
+    "model_arch": "whisper-tiny",
+    "save_indices_used": true
+}

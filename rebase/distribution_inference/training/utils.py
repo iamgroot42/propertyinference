@@ -1,8 +1,8 @@
 import torch as ch
 import pickle
+import os
 import numpy as np
 from cleverhans.future.torch.attacks.projected_gradient_descent import projected_gradient_descent
-
 from distribution_inference.config import AttackConfig, EarlyStoppingConfig
 
 
@@ -62,17 +62,40 @@ def save_model(model, path, indices=None):
             raise NotImplementedError("Saving sklearn model with indices is not implemented")
         with open(path, 'wb') as f:
             pickle.dump(model, f)
-    else:
+    elif model.is_hf_model:
+        if path.endswith(".ch"):
+            path = path[:-3]
+        model.save(path)
         if indices is not None:
             state_dict = {
-                "actual_model": model.state_dict(),
+                "train_ids": indices[0],
+                "test_ids": indices[1],
+            }
+            ch.save(state_dict, os.path.join(path, "indices.pt"))
+    else:
+        model_state_dict = model.state_dict()
+        # If compiled model, save the original model
+        model_state_dict = handle_compiled_weights(model_state_dict)
+        if indices is not None:
+            state_dict = {
+                "actual_model": model_state_dict,
                 "train_ids": indices[0],
                 "test_ids": indices[1],
             }
         else:
-            state_dict = model.state_dict()
+            state_dict = model_state_dict
 
         ch.save(state_dict, path)
+
+
+def handle_compiled_weights(state_dict):
+    """
+        Handle the case where all keys have a prefix "_orig_mod"
+        and remove this prefix from all keys.
+    """
+    if all([k.startswith("_orig_mod") for k in state_dict.keys()]):
+        state_dict = {k[10:]: v for k, v in state_dict.items()}
+    return state_dict
 
 
 def load_model(model, path, on_cpu: bool = False):
@@ -83,17 +106,29 @@ def load_model(model, path, on_cpu: bool = False):
                 model = pickle.load(f)
             # Sklearn model is obviously not a graph model
             model.is_graph_model = False
+        elif model.is_hf_model:
+            if path.endswith(".ch"):
+                path = path[:-3]
+            # Load model
+            model.load(path, map_location=map_location)
+            # Check if indices are also stored
+            if os.path.exists(os.payh.join(path, "indices.pt")):
+                state_dict = ch.load(os.path.join(path, "indices.pt"), map_location=map_location)
+                return model, (state_dict["train_ids"], state_dict["test_ids"])
+            else:
+                return model
         else:
             model_dict = ch.load(path, map_location=map_location)
             if "actual_model" in model_dict:
                 # Information about training data also stored; return
-                model.load_state_dict(model_dict["actual_model"])
+                model.load_state_dict(
+                    handle_compiled_weights(model_dict["actual_model"]))
                 train_ids = model_dict["train_ids"]
                 test_ids = model_dict["test_ids"]
                 return model, (train_ids, test_ids)
             else:
-                model.load_state_dict(ch.load(path, map_location=map_location))
-    except:
+                model.load_state_dict(handle_compiled_weights(ch.load(path, map_location=map_location)))
+    except Exception as e:
         raise Exception("Could not load model from {}".format(path))
     return model
 

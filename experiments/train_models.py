@@ -16,8 +16,7 @@ import torch.multiprocessing
 torch.multiprocessing.set_sharing_strategy('file_system')
 
 
-
-EXTRA = False # False
+EXTRA = False
 if __name__ == "__main__":
     parser = ArgumentParser(add_help=False)
     parser.add_argument(
@@ -57,6 +56,10 @@ if __name__ == "__main__":
     # Get dataset info object
     ds_info = get_dataset_information(
         data_config.name)(train_config.save_every_epoch)
+    # Process data (one time per model type) if librispeech
+    if data_config.name == "librispeech":
+        ds_info.prepare_processed_data(train_config.model_arch)
+
     exp_name = "_".join([config.data_config.split,
                         config.data_config.prop,
                         config.model_arch if config.model_arch else ds_info.default_model,
@@ -111,6 +114,7 @@ if __name__ == "__main__":
             batch_size=train_config.batch_size)
         # print(1/(len(train_loader.dataset)*train_config.batch_size))
         # print(len(val_loader.dataset))
+        # print(len(train_loader.dataset))
         # exit(0)
         plist = []
         # for t in train_loader:
@@ -128,6 +132,11 @@ if __name__ == "__main__":
             elif data_config.name == "maadface":
                 model = ds_info.get_model(model_arch=train_config.model_arch,
                                          n_people=ds.n_people,
+                                         for_training=True,
+                                         parallel=train_config.parallel)
+            elif data_config.name == "celeba_person":
+                model = ds_info.get_model(model_arch=train_config.model_arch,
+                                         for_training=True,
                                          parallel=train_config.parallel)
             else:
                 model = ds_info.get_model(model_arch=train_config.model_arch, 
@@ -162,20 +171,19 @@ if __name__ == "__main__":
             if misc_config and misc_config.adv_config:
                 suffix = "_%.2f_adv_%.2f.ch" % (vacc[0], vacc[1])
             else:
-                suffix = "_%.2f.ch" % vacc
+                suffix = "_%.4f.ch" % vacc
 
             # Get path to save model
             file_name = str(i + train_config.offset) + suffix
             save_path = ds.get_save_path(train_config, file_name)
 
             indices = None
-            if EXTRA:
+            if train_config.save_indices_used:
                 # Also note which IDs were used for train, test
                 train_ids, test_ids = ds.get_used_indices()
                 indices = (train_ids, test_ids)
 
             # Save model
-            # print(save_path)
             save_model(model, save_path, indices=indices)
 
             # Save logger

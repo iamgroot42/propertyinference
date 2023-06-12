@@ -4,7 +4,7 @@ from tqdm import tqdm
 import pandas as pd
 import torch as ch
 
-from distribution_inference.datasets import new_census, celeba, boneage,census, texas, arxiv, synthetic, maadface
+from distribution_inference.datasets import new_census, celeba, boneage,census, texas, arxiv, synthetic, maadface, celeba_person, librispeech
 
 DATASET_INFO_MAPPING = {
     "new_census": new_census.DatasetInformation,
@@ -14,7 +14,9 @@ DATASET_INFO_MAPPING = {
     "texas": texas.DatasetInformation,
     "arxiv": arxiv.DatasetInformation,
     "synthetic": synthetic.DatasetInformation,
-    "maadface": maadface.DatasetInformation
+    "maadface": maadface.DatasetInformation,
+    "celeba_person": celeba_person.DatasetInformation,
+    "librispeech": librispeech.DatasetInformation
 }
 
 DATASET_WRAPPER_MAPPING = {
@@ -25,7 +27,9 @@ DATASET_WRAPPER_MAPPING = {
     "texas": texas.TexasWrapper,
     "arxiv": arxiv.ArxivWrapper,
     "synthetic": synthetic.SyntheticWrapper,
-    "maadface": maadface.MaadFaceWrapper
+    "maadface": maadface.MaadFaceWrapper,
+    "celeba_person": celeba_person.CelebaPersonWrapper,
+    "librispeech": librispeech.LibriSpeechWrapper
 }
 
 
@@ -236,3 +240,60 @@ def collect_data(loader, expect_extra: bool = True):
     X = ch.cat(X, dim=0)
     Y = ch.cat(Y, dim=0)
     return X, Y
+
+
+def collect_gallery_images(loader, n_classes):
+    """
+        Collect one image (to be used as gallery) per person
+    """
+    images = None
+    collected = np.zeros(n_classes, dtype=np.bool)
+    with tqdm(total=n_classes, desc="Collecting gallery images") as pbar:
+        for x, y, _ in loader:
+            data_shape = x.shape[1:]
+            # Initialize images placeholder if not done so already
+            if images is None:
+                images = ch.zeros((n_classes, *data_shape), dtype=x.dtype)
+            # New people = (not seen) AND (current batch)
+            current_batch = np.zeros(n_classes, dtype=np.bool)
+            current_batch[y] = True
+            new_people = np.logical_and(~collected, current_batch)
+            
+            # Select people that we want images for
+            new_people_ids = np.where(new_people)[0]
+            if len(new_people_ids) == 0:
+                continue
+
+            wanted_ids = np.isin(y, new_people_ids)
+            # Pick unique images out of these people
+            unique_people, unique_indices = np.unique(y[wanted_ids], return_index=True)
+            images[unique_people] = x[np.nonzero(wanted_ids)[0][unique_indices]]
+            collected[unique_people] = True
+
+            pbar.update(len(unique_people))
+
+            # Stop if all collected
+            if collected.all():
+                break
+    if not collected.all():
+        raise ValueError("Not enough images per class")
+    return images
+
+
+def get_match_scores(batch_embeds, gallery_embeds, apply_softmax: bool = True):
+    """
+        Compute match scores (probabilities) via softmax-based normalization
+        of cosine similarity products between batch_embeds and gallery_embeds.
+    """
+    # Compute cosine similarity product (normalized with norms) between both each image in batch and all gallery_embeds
+    # batch_embeds is of shape (batch_size, embed_dim)
+    # gallery_embeds is of shape (n_gallery, embed_dim)
+    simulated_preds = []
+    for b in batch_embeds:
+         csim = ch.nn.functional.cosine_similarity(b, gallery_embeds)
+         simulated_preds.append(csim)
+    simulated_preds = ch.stack(simulated_preds, dim=0)
+    if apply_softmax:
+        # Normalize with softmax
+        simulated_preds = ch.softmax(simulated_preds, dim=1)
+    return simulated_preds

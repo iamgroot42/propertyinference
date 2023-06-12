@@ -26,17 +26,23 @@ class BaseModel(nn.Module):
                  transpose_features: bool = True,
                  is_sklearn_model: bool = False,
                  is_graph_model: bool = False,
-                 is_contrastive_model: bool = False):
+                 is_contrastive_model: bool = False,
+                 is_relation_based: bool = False,
+                 is_asr_model: bool = False,
+                 is_hf_model: bool = False):
         super().__init__()
         self.is_conv = is_conv
         self.transpose_features = transpose_features
         self.is_sklearn_model = is_sklearn_model
         self.is_graph_model = is_graph_model
         self.is_contrastive_model = is_contrastive_model
+        self.is_relation_based = is_relation_based
+        self.is_asr_model = is_asr_model
+        self.is_hf_model = is_hf_model
 
     def forward(self, x: Union[np.ndarray, ch.Tensor]) -> Union[np.ndarray, ch.Tensor]:
         converted = False
-        # Convert from tensor to numpy
+        # Convert from tensor to numpya
         if type(x) == ch.Tensor:
             device = x.device
             x = x.detach().cpu().numpy()

@@ -59,6 +59,25 @@ class ContrastiveConfig(Serializable):
     """
     sample_rate: float = 1.0
     """Sampling rate for pairs of samples"""
+    proto_validate: bool = False
+    """Use Proto-Net based protocol for validation?"""
+
+
+@dataclass
+class RelationConfig(Serializable):
+    """
+        Configuration for relation net training
+    """
+    n_way: int
+    """Number of classes to use"""
+    k_shot: int
+    """Number of samples per class to use"""
+    num_query_train: int
+    """Number of query samples to use for train"""
+    num_query_test: int
+    """Number of query samples to use for test/val"""
+    test_num_task: int
+    """Number of times to sample from validation/test data"""
 
 
 @dataclass
@@ -111,6 +130,8 @@ class DatasetConfig(Serializable):
     """Prune graph by removing nodes? (only valid for arXiv dataset)"""
     adv_use_frac: Optional[float] = 1.0
     """What percentage of data should be used to train adv models (out of the quota reserved)"""
+    relation_config: Optional[RelationConfig] = None
+    """Configuration to be used for relation net training"""
 
 
 @dataclass
@@ -242,6 +263,10 @@ class TrainConfig(Serializable):
     """Use multiple GPUs for model training?"""
     early_stopping: Optional[EarlyStoppingConfig] = None
     """Use early stopping?"""
+    save_indices_used: Optional[bool] = False
+    """Save extra information (indices of train/test data used)?"""
+    gradient_accumulation_steps: Optional[int] = 1
+    """Number of steps to accumulate gradients over (applies to HF training)"""
 
 
 @dataclass
@@ -352,6 +377,8 @@ class FinetuneAttackConfig(Serializable):
     """Strict finetune (last N layers) or whole model to be finetuned?"""
     weight_decay: Optional[float] = 0.0
     """Weight decay to use when fine-tuning"""
+    sample_size : Optional[int] = None
+    """Number of samples to use while finetuning model. If None, use as much as would be used to train shadow models."""
 
 
 @dataclass

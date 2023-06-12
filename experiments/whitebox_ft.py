@@ -8,6 +8,7 @@ from distribution_inference.config import DatasetConfig, AttackConfig, WhiteBoxA
 from distribution_inference.utils import flash_utils
 from distribution_inference.logging.core import AttackResult
 import random
+from dataclasses import replace
 
 
 if __name__ == "__main__":
@@ -69,6 +70,8 @@ if __name__ == "__main__":
     ds_vic_1 = ds_wrapper_class(
         data_config_victim_1, skip_data=True,
         label_noise=train_config.label_noise)
+    # INTERVENE
+    data_config_adv_1 = replace(data_config_adv_1, value=0.0)
     ds_adv_1 = ds_wrapper_class(data_config_adv_1)
 
     # Make train config for adversarial models
@@ -96,6 +99,8 @@ if __name__ == "__main__":
             data_config_vic_2,
             skip_data=True,
             label_noise=train_config.label_noise)
+        # INTERVENE
+        data_config_adv_2 = replace(data_config_adv_2, value=1.0)
         ds_adv_2 = ds_wrapper_class(data_config_adv_2)
 
         # Load victim's model features for other value
@@ -114,6 +119,13 @@ if __name__ == "__main__":
             # Create attacker object
             attacker_obj = get_attack(wb_attack_config.attack)(
                 None, wb_attack_config)
+            
+            # Set number of samples to use if specified
+            if wb_attack_config.finetune_config.sample_size:
+                ds_adv_1.override_num_samples(wb_attack_config.finetune_config.sample_size)
+                ds_adv_2.override_num_samples(wb_attack_config.finetune_config.sample_size)
+                # For NC (sex), default would be 50000
+                # Try using 5000?
 
             loader_0 = ds_adv_1.get_loaders(batch_size=train_config.batch_size)
             loader_1 = ds_adv_2.get_loaders(batch_size=train_config.batch_size)
