@@ -279,10 +279,8 @@ class MaadFaceWrapper(base.CustomDatasetWrapper):
         # Define (number of people to pick, number of test images per person)
         self._prop_wise_subsample_sizes = {
             "Male": {
-                # "adv": (100, 30),
-                # "victim": (5000, 50)
-                "adv": (1250, 30),
-                "victim": (5000, 50)
+                "adv": (625, 30),
+                "victim": (2500, 50)
             }
         }
         self.n_people, self.n_in_test = self._prop_wise_subsample_sizes[self.prop][self.split]
@@ -367,8 +365,8 @@ class MaadFaceWrapper(base.CustomDatasetWrapper):
                     shuffle: bool = True,
                     eval_shuffle: bool = False,
                     val_factor: int = 2,
-                    num_workers: int = 8,
-                    prefetch_factor: int = 4,
+                    num_workers: int = 4,
+                    prefetch_factor: int = 2,
                     indexed_data=None):
         self.ds_train, self.ds_val = self.load_data()
 
