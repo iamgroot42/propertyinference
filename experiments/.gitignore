@@ -5,3 +5,4 @@ __pycache__/*
 *.pkl
 
 testing_training/*
+.ipynb_checkpoints/*

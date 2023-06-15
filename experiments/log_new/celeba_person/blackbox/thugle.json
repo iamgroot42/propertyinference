@@ -1,0 +1,116 @@
+{
+    "name": "thugle",
+    "start time": "2023-05-30 09:27:22.962392",
+    "attack_config": {
+        "train_config": {
+            "data_config": {
+                "name": "celeba_person",
+                "prop": "1",
+                "value": 0.0,
+                "split": "victim",
+                "drop_senstive_cols": false,
+                "scale": 1.0,
+                "augment": false,
+                "classify": null,
+                "cwise_samples": null,
+                "squeeze": false,
+                "processed_variant": true,
+                "prune": 0,
+                "adv_use_frac": 1.0,
+                "relation_config": {
+                    "n_way": 5,
+                    "k_shot": 5,
+                    "num_query_train": 5,
+                    "num_query_test": 5,
+                    "test_num_task": 80
+                }
+            },
+            "epochs": 20,
+            "learning_rate": 0.1,
+            "batch_size": 128,
+            "misc_config": null,
+            "lr_scheduler": null,
+            "verbose": false,
+            "quiet": false,
+            "num_models": 25,
+            "offset": 0,
+            "weight_decay": 0.0005,
+            "get_best": true,
+            "cpu": false,
+            "expect_extra": true,
+            "save_every_epoch": false,
+            "extra_info": null,
+            "regression": false,
+            "multi_class": true,
+            "label_noise": 0,
+            "model_arch": "scnn_relation",
+            "parallel": false,
+            "early_stopping": null,
+            "save_indices_used": false
+        },
+        "values": [
+            1.0
+        ],
+        "black_box": {
+            "attack_type": [
+                "face_auditor"
+            ],
+            "ratios": [
+                1.0
+            ],
+            "batch_size": 32,
+            "num_adv_models": 5,
+            "granularity": 0.005,
+            "preload": false,
+            "multi": null,
+            "multi2": null,
+            "multi_class": true,
+            "save": false,
+            "tune_final_threshold": false,
+            "Start_epoch": 1,
+            "End_epoch": 20,
+            "relative_threshold": false,
+            "loss_variant": false,
+            "random_order": false,
+            "log_odds_order": false,
+            "kl_frac": 0.8,
+            "kl_voting": false,
+            "generative_attack": null,
+            "order_name": null,
+            "geo_mean": false,
+            "regression_config": null,
+            "merlin_mean": 0.0,
+            "merlin_std": 0.3,
+            "merlin_neighbors": 100
+        },
+        "white_box": null,
+        "tries": 3,
+        "num_victim_models": 5,
+        "on_cpu": true,
+        "adv_misc_config": null,
+        "num_total_adv_models": 1000,
+        "victim_local_attack": false,
+        "victim_model_arch": null,
+        "adv_model_arch": null,
+        "adv_processed_variant": false,
+        "adv_target_epoch": null,
+        "victim_target_epoch": null
+    },
+    "result": {
+        "face_auditor": {
+            "1.0": {
+                "adv_acc": [
+                    null,
+                    null,
+                    null
+                ],
+                "victim_acc": [
+                    0.53,
+                    0.528,
+                    0.52
+                ]
+            }
+        }
+    },
+    "save time": "2023-05-30 10:25:11.200491"
+}

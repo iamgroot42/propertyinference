@@ -13,22 +13,31 @@ import matplotlib.pyplot as plt
 import matplotlib as mpl
 from matplotlib.lines import Line2D
 mpl.rcParams['figure.dpi'] = 300
+
+
 def lineplot(plotter, title='', darkplot=True, dash=False):
     assert plotter.columns[3] in plotter.df, "Epoch column not found"
 
     if darkplot:
         # Set dark background
         plt.style.use('dark_background')
-    graph = seaborn.lineplot(
-        x=plotter.columns[3],
-        y=plotter.columns[1],
-        data=plotter.df.query("Metric=='R_cross'"),
-       # hue = plotter.columns[2],
-        color="red"
-    )
-    graph.set_ylabel("R_cross")
+
+    # graph = seaborn.lineplot(
+    #     x=plotter.columns[3],
+    #     y=plotter.columns[1],
+    #     data=plotter.df.query("Metric=='R_cross'"),
+    #    # hue = plotter.columns[2],
+    #     color="red"
+    # )
+    # graph.set_ylabel("R_cross")
+
+    # Invert 'Accuracy (%)' from X to 1 / X
+    # plotter.df["Accuracy (%)"] = 1 / plotter.df["Accuracy (%)"]
     
-    ax2 = graph.twinx()
+    # ax2 = graph.twinx()
+    # ax2 = graph
+    ax2 = plt.gca()
+    graph = ax2
     graph.legend(handles=[Line2D([], [], marker='_', color="r", label='R_Cross')])
     sns.move_legend(graph, "upper right", bbox_to_anchor=(0, 1))
     sns.lineplot(
@@ -37,7 +46,8 @@ def lineplot(plotter, title='', darkplot=True, dash=False):
         hue = plotter.columns[2],
         data=plotter.df.query("Metric!='R_cross'"), ax=ax2)
     ax2.set_ylabel("Accuracy (%)")
-    plt.xticks(range(1,41))
+    # plt.xticks(range(1,41))
+    plt.xticks(range(1,21))
     #ax2.legend(handles=[Line2D([], [], marker='_', color="r", label='R_Cross')])
     plotter._graph_specific_options(graph, title, darkplot, dash)
 

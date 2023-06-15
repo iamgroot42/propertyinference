@@ -27,7 +27,7 @@
         "parallel": false,
         "multi_class": true
     },
-    "tries": 5,
+    "tries": 3,
     "values": [
         1.0
     ],
@@ -35,7 +35,7 @@
     "black_box": {
         "granularity": 0.005,
         "multi_class": true,
-        "num_adv_models": 2,
+        "num_adv_models": 5,
         "batch_size": 32,
         "attack_type": [
             "face_auditor"
@@ -46,5 +46,5 @@
         "preload": false,
         "kl_frac": 0.8
     },
-    "num_victim_models": 3
+    "num_victim_models": 5
 }

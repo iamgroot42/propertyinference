@@ -1,0 +1,160 @@
+{
+    "name": "prelim",
+    "start time": "2023-04-12 14:22:55.293073",
+    "attack_config": {
+        "train_config": {
+            "data_config": {
+                "name": "maadface",
+                "prop": "Male",
+                "value": 0.5,
+                "split": "adv",
+                "drop_senstive_cols": false,
+                "scale": 1.0,
+                "augment": true,
+                "classify": null,
+                "cwise_samples": null,
+                "squeeze": false,
+                "processed_variant": true,
+                "prune": 0,
+                "adv_use_frac": 1.0
+            },
+            "epochs": 20,
+            "learning_rate": 0.1,
+            "batch_size": 128,
+            "misc_config": {
+                "adv_config": null,
+                "dp_config": null,
+                "shuffle_defense_config": null,
+                "contrastive_config": {
+                    "sample_rate": 1.0
+                }
+            },
+            "lr_scheduler": null,
+            "verbose": false,
+            "quiet": false,
+            "num_models": 25,
+            "offset": 0,
+            "weight_decay": 0.0005,
+            "get_best": true,
+            "cpu": false,
+            "expect_extra": true,
+            "save_every_epoch": false,
+            "extra_info": null,
+            "regression": false,
+            "multi_class": true,
+            "label_noise": 0,
+            "model_arch": "arcface_resnet",
+            "parallel": false,
+            "early_stopping": null
+        },
+        "values": [
+            0.8
+        ],
+        "black_box": {
+            "attack_type": [
+                "KL",
+                "loss_and_threshold"
+            ],
+            "ratios": [
+                1.0
+            ],
+            "batch_size": 32,
+            "num_adv_models": 20,
+            "granularity": 0.005,
+            "preload": false,
+            "multi": null,
+            "multi2": null,
+            "multi_class": true,
+            "save": false,
+            "tune_final_threshold": false,
+            "Start_epoch": 1,
+            "End_epoch": 20,
+            "relative_threshold": false,
+            "loss_variant": false,
+            "random_order": false,
+            "log_odds_order": false,
+            "kl_frac": 0.8,
+            "kl_voting": false,
+            "generative_attack": null,
+            "order_name": null,
+            "geo_mean": false,
+            "regression_config": null,
+            "merlin_mean": 0.0,
+            "merlin_std": 0.3,
+            "merlin_neighbors": 100
+        },
+        "white_box": null,
+        "tries": 5,
+        "num_victim_models": 14,
+        "on_cpu": true,
+        "adv_misc_config": {
+            "adv_config": null,
+            "dp_config": null,
+            "shuffle_defense_config": null,
+            "contrastive_config": {
+                "sample_rate": 1.0
+            }
+        },
+        "num_total_adv_models": 1000,
+        "victim_local_attack": false,
+        "victim_model_arch": null,
+        "adv_model_arch": null,
+        "adv_processed_variant": false,
+        "adv_target_epoch": null,
+        "victim_target_epoch": null
+    },
+    "result": {
+        "KL": {
+            "0.8": {
+                "adv_acc": [
+                    null,
+                    null,
+                    null,
+                    null,
+                    null
+                ],
+                "victim_acc": [
+                    100.0,
+                    100.0,
+                    100.0,
+                    100.0,
+                    100.0
+                ]
+            }
+        },
+        "loss_and_threshold": {
+            "0.8": {
+                "adv_acc": [
+                    100.0,
+                    100.0,
+                    100.0,
+                    100.0,
+                    100.0
+                ],
+                "victim_acc": [
+                    [
+                        78.57142857142857,
+                        50.0
+                    ],
+                    [
+                        78.57142857142857,
+                        50.0
+                    ],
+                    [
+                        75.0,
+                        50.0
+                    ],
+                    [
+                        78.57142857142857,
+                        50.0
+                    ],
+                    [
+                        78.57142857142857,
+                        50.0
+                    ]
+                ]
+            }
+        }
+    },
+    "save time": "2023-04-13 09:08:08.329564"
+}

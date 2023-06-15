@@ -28,7 +28,7 @@ def read_up_configs():
             config = SyntheticDatasetConfig.load(os.path.join(dir_path, filename))
             CONFIG_MAPPING[filename.removesuffix(".json")] = config
 # Called whenever this module is imported
-read_up_configs()
+# read_up_configs()
 
 
 class DatasetInformation(base.DatasetInformation):

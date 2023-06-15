@@ -21,5 +21,6 @@
     "get_best": true,
     "verbose": false,
     "model_arch": "arcface_resnet",
-    "parallel": true
+    "parallel": true,
+    "multi_class": true
 }

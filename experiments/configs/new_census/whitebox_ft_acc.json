@@ -5,7 +5,9 @@
         "batch_size": 0,
         "finetune_config": {
             "inspection_parameter": "acc",
-            "num_ft_epochs": 1
+            "num_ft_epochs": 2,
+            "strict_ft": false,
+            "learning_rate": 1e-4
         }
     },
     "train_config": {

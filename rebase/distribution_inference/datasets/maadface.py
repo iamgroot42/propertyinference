@@ -5,13 +5,12 @@ import os
 from distribution_inference.defenses.active.shuffle import ShuffleDefense
 import pandas as pd
 from torchvision import transforms
-import gc
 from PIL import Image
 import torch as ch
 import numpy as np
 import torch.nn as nn
 from tqdm import tqdm
-from typing import Tuple, Dict, List
+from typing import  List
 
 import distribution_inference.datasets.base as base
 import distribution_inference.datasets.utils as utils
@@ -23,7 +22,7 @@ import pickle
 
 
 # TODO:
-# 1. Add support for exclusion of certain people (list/singled out) based on input
+# <DONE> 1. Add support for exclusion of certain people (list/singled out) based on input
 # <DONE> 2. Find SOTA contrastive training methods (and models) to implement for feature extractor
 # <DONE> 3. Define data splits with a) victim's set of people b) adv's set of people
 # 4. Collect images for target people from the internet in post-dataset era to have no overlap in images
@@ -227,24 +226,6 @@ class MAADFaceDataset(base.CustomDataset):
         return x, y, prop_label
 
 
-def _make_weights_for_balanced_classes(images, nclasses):
-    '''
-        Taken from: https://github.com/ZhaoJ9014/face.evoLVe/blob/master/util/utils.py#L31
-    '''
-    count = [0] * nclasses
-    for item in images:
-        count[item[1]] += 1  # item is (img-data, label-id)
-    weight_per_class = [0.] * nclasses
-    N = float(sum(count))  # total number of images
-    for i in range(nclasses):
-        weight_per_class[i] = N / float(count[i])
-    weight = [0] * len(images)
-    for idx, val in enumerate(images):
-        weight[idx] = weight_per_class[val[1]]
-
-    return weight
-
-
 class MaadFaceWrapper(base.CustomDatasetWrapper):
     def __init__(self,
                  data_config: DatasetConfig,
@@ -332,9 +313,6 @@ class MaadFaceWrapper(base.CustomDatasetWrapper):
         
         with open(self.info_object.get_split_save_path(self.split, train=False), 'r') as f:
             files_test = list(map(lambda x: x.rstrip(), f.readlines()))
-
-        if self.cwise_samples is not None:
-            total_people = (self.cwise_samples, self.cwise_samples)
         
         self.people_selected = self.subsample_people(files_train, self.n_people)
         name_to_requested_prop_mapping = self.info_object.name_prop_mapping
@@ -371,18 +349,12 @@ class MaadFaceWrapper(base.CustomDatasetWrapper):
                     indexed_data=None):
         self.ds_train, self.ds_val = self.load_data()
 
-        # TODO: Decide if we want to use this or not
-        # train_weights = _make_weights_for_balanced_classes(self.ds_train.imgs, len(self.ds_train.classes))
-        # train_weights = ch.DoubleTensor(train_weights)
-        # sampler = ch.utils.data.sampler.WeightedRandomSampler(train_weights, len(train_weights))
-        sampler = None
-
         return super().get_loaders(batch_size, shuffle=shuffle,
                                    eval_shuffle=eval_shuffle,
                                    val_factor=val_factor,
                                    num_workers=num_workers,
                                    prefetch_factor=prefetch_factor,
-                                   train_sampler=sampler)
+                                   train_sampler=None)
 
     def get_save_dir(self, train_config: TrainConfig, model_arch: str) -> str:
         base_models_dir = self.info_object.base_models_dir

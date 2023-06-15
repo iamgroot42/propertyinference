@@ -69,7 +69,8 @@ if __name__ == "__main__":
     
     ds_vic_1 = ds_wrapper_class(
         data_config_vic_1,
-        skip_data=True,
+        # skip_data=True,
+        skip_data=False,
         label_noise=train_config.label_noise,
         epoch=attack_config.train_config.save_every_epoch)
     ds_adv_1 = ds_wrapper_class(data_config_adv_1)
@@ -87,10 +88,11 @@ if __name__ == "__main__":
             epochwise_version=attack_config.train_config.save_every_epoch,
             model_arch=attack_config.victim_model_arch,
             custom_models_path=models_1_path)
-        if type(models_vic_1) == tuple:
+        if type(models_vic_1) == tuple and (not relation_net_based):
             models_vic_1 = models_vic_1[0]
 
-        are_contrastive_models = models_vic_1[0].is_contrastive_model
+        # are_contrastive_models = models_vic_1[0].is_contrastive_model
+        are_contrastive_models = models_vic_1[0][0].is_contrastive_model
 
         # For each value (of property) asked to experiment with
         for prop_value in attack_config.values:
@@ -99,7 +101,9 @@ if __name__ == "__main__":
 
             # Create new DS object for both and victim (for other ratio)
             ds_vic_2 = ds_wrapper_class(
-                data_config_vic_2, skip_data=True,
+                data_config_vic_2,
+                skip_data=False,
+                # skip_data=True,
                 label_noise=train_config.label_noise,
                 epoch=attack_config.train_config.save_every_epoch)
             ds_adv_2 = ds_wrapper_class(data_config_adv_2)
@@ -154,7 +158,7 @@ if __name__ == "__main__":
                 return_obj = get_vic_adv_preds_on_distr(
                     models_vic=(models_vic_1, models_vic_2),
                     models_adv=models_adv_send,
-                    ds_obj=ds_obj_use,
+                    ds_obj=(ds_obj_use, ds_vic_1, ds_vic_2),
                     batch_size=bb_attack_config.batch_size,
                     epochwise_version=attack_config.train_config.save_every_epoch,
                     preload=bb_attack_config.preload,

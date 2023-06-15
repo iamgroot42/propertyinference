@@ -3,7 +3,7 @@
         "name": "celeba",
         "prop": "Young",
         "classify": "Male",
-        "split": "victim",
+        "split": "adv",
         "value": 0.0,
         "processed_variant": false
     },

@@ -5,17 +5,17 @@
         "batch_size": 0,
         "finetune_config": {
             "inspection_parameter": "loss",
-            "num_ft_epochs": 2,
+            "num_ft_epochs": 5,
             "strict_ft": false,
             "learning_rate": 1e-4,
-            "sample_size": 10000
+            "sample_size": 5000
         }
     },
     "train_config": {
         "data_config": {
             "name": "new_census",
-            "prop": "race",
-            "split": "sex",
+            "prop": "sex",
+            "split": "adv",
             "squeeze": true,
             "value": 0.5
         },

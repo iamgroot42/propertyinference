@@ -56,13 +56,22 @@ class FinetuneAttack(Attack):
             model_0.set_to_finetune()
             model_1.set_to_finetune()
 
-        train(model_0, d0_loaders, train_config=train_config_ft)
-        train(model_1, d1_loaders, train_config=train_config_ft)
+        # loaders_for_0 = (d0_loaders[0], d1_loaders[0])
+        # loaders_for_1 = (d1_loaders[0], d0_loaders[0])
+        loaders_for_0 = d0_loaders
+        loaders_for_1 = d1_loaders
+        # Compute train losses (on D_b) and keep track of losses on D_1-b as well
+        _, _, losses_0 = train(model_0, loaders_for_0,
+                               train_config=train_config_ft,
+                               extra_options={"track_epoch_losses": True, "extra_loader": d1_loaders[1]})
+        _, _, losses_1 = train(model_1, loaders_for_1,
+                               train_config=train_config_ft,
+                               extra_options={"track_epoch_losses": True, "extra_loader": d0_loaders[1]})
         model_0.eval()
         model_1.eval()
-        return model_0, model_1
+        return (model_0, losses_0), (model_1, losses_1)
 
-    def _analyze_metric(self, model_og, model_0, model_1, d0_loader, d1_loader):
+    def _analyze_metric(self, model_og, model_0, model_1, d0_loader, d1_loader, losses_0, losses_1):
         """
             Analyze metric of interest on finetuned models and compare to infer which distribution
             the victim model is likely to be trained on.
@@ -104,6 +113,30 @@ class FinetuneAttack(Attack):
             loss_ref_1 = ft_utils.get_loss(model_og, d1_loader, binary=binary, regression=regression)
             loss_0 = ft_utils.get_loss(model_0, d0_loader, binary=binary, regression=regression)
             loss_1 = ft_utils.get_loss(model_1, d1_loader, binary=binary, regression=regression)
+
+            import numpy as np
+            import matplotlib.pyplot as plt
+            plt.clf()
+            A_0 = np.concatenate(([loss_ref_0], losses_0[0]))
+            A_1 = np.concatenate(([loss_ref_1], losses_0[1]))
+            B_1 = np.concatenate(([loss_ref_1], losses_1[0]))
+            B_0 = np.concatenate(([loss_ref_0], losses_1[1]))
+            # plt.plot(losses_0[0], color="C0", label="d_0 train", marker="o")
+            # plt.plot(losses_0[1], color="C0", label="d_0 val", marker="x")
+            # plt.plot(losses_0[2], color="C0", label="d_0 other", marker="+")
+            # plt.plot(losses_1[0], color="C0", label="d_1 train", marker="o")
+            # plt.plot(losses_1[1], color="C0", label="d_1 val", marker="x")
+            # plt.plot(losses_1[2], color="C1", label="d_1 other", marker="x")
+            # plt.legend()
+            # print("Wanted diff: %.4f" % (losses_1[2][-1] - losses_1[2][0]))
+            # plt.plot(A_0, color="C0", label="m_0, l_0", marker="o")
+            # plt.plot(A_1, color="C0", label="m_0, l_1", marker="x")
+            # plt.plot(B_1, color="C1", label="m_1, l_1", marker="o")
+            # plt.plot(B_0, color="C1", label="m_1, l_0", marker="x")
+
+            # return losses_1[2][-1] - losses_1[2][0]
+            return losses_0[2][-1] - losses_0[2][0]
+
             relative_change_0 = (loss_ref_0 - loss_0) / loss_ref_0
             relative_change_1 = (loss_ref_1 - loss_1) / loss_ref_1
 
@@ -119,7 +152,7 @@ class FinetuneAttack(Attack):
             diff_ratio_1 *= loss_ref_0 / loss_ref_1
             prediction = (diff_ratio_0 > diff_ratio_1) * 1
 
-            # Use this new ratio-based change criteriot
+            # Use this new ratio-based change criterion
             # prediction = 0 if abs(diff_ratio_0) < abs(diff_ratio_1) else 1
             # TODO: Decide if blindly converting to abs is the right way, or to use dynamic rounding-off
 
@@ -133,11 +166,11 @@ class FinetuneAttack(Attack):
     def _execute_individual_attack(self, model, loaders, train_config):
         d0_loaders, d1_loaders = loaders
         # Finetune model
-        model_0, model_1 = self._finetune_copies(model, d0_loaders, d1_loaders, train_config)
+        (model_0, losses_0), (model_1, losses_1) = self._finetune_copies(model, d0_loaders, d1_loaders, train_config)
         # Analyze metric of interest
         # Using train loaders for now- experiment with val loaders later
         loader_pick = 0
-        prediction = self._analyze_metric(model, model_0, model_1, d0_loaders[loader_pick], d1_loaders[loader_pick])
+        prediction = self._analyze_metric(model, model_0, model_1, d0_loaders[loader_pick], d1_loaders[loader_pick], losses_0, losses_1)
         del model_0, model_1
         gc.collect()
         ch.cuda.empty_cache()
@@ -164,15 +197,16 @@ class FinetuneAttack(Attack):
         # Could add later as a calibration step, but for now attack is free of shadow models
         accuracy, count = 0, 0
         iterator = tqdm(test_loader, desc="Finetuning models for attack")
-        # with open("run_results_8.txt", "w") as f:
-        for model, label in iterator:
-            prediction = self._execute_individual_attack(model, (data_loaders_0, data_loaders_1), train_config)
-            # prediction = [label] + prediction
-            # f.write(",".join([str(x) for x in prediction]) + "\n")
-            # continue
-            accuracy += (prediction == label)
-            count += 1
-            iterator.set_description("Finetuning models for attack (Accuracy: {:.2f}%)".format(accuracy / count * 100))
+        with open("run_results_1.txt", "w") as f:
+            for model, label in iterator:
+                prediction = self._execute_individual_attack(model, (data_loaders_0, data_loaders_1), train_config)
+                prediction = [label, prediction]
+                f.write(",".join([str(x) for x in prediction]) + "\n")
+                continue
+            # accuracy += (prediction == label)
+            # count += 1
+            # iterator.set_description("Finetuning models for attack (Accuracy: {:.2f}%)".format(accuracy / count * 100))
+        exit(0)
 
         chosen_accuracy = 100 * accuracy / count
         return chosen_accuracy

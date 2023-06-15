@@ -8,13 +8,13 @@
     },
     "epochs": 5000,
     "offset": 0,
-    "learning_rate": 1e-5,
+    "learning_rate": 2.5e-5,
     "batch_size": 16,
     "gradient_accumulation_steps": 1,
     "weight_decay": 0,
     "num_models": 1,
     "get_best": false,
     "verbose": false,
-    "model_arch": "whisper-tiny",
+    "model_arch": "whisper-base",
     "save_indices_used": true
 }

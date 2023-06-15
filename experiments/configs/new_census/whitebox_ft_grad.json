@@ -5,7 +5,8 @@
         "batch_size": 0,
         "finetune_config": {
             "inspection_parameter": "grad_norm",
-            "num_ft_epochs": 1
+            "num_ft_epochs": 1,
+            "strict_ft": true
         }
     },
     "train_config": {

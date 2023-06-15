@@ -1,0 +1,41 @@
+{
+    "train_config": {
+        "data_config": {
+            "name": "celeba",
+            "prop": "Male",
+            "classify": "Smiling",
+            "split": "adv",
+            "value": 0.5,
+            "cwise_samples": 1e3,
+            "processed_variant": false
+        },
+        "epochs": 0,
+        "learning_rate": 0,
+        "batch_size": 0
+    },
+    "tries": 5,
+    "values": [
+        0.1,
+        0.9
+    ],
+    "on_cpu": true,
+    "black_box": {
+        "granularity": 0.005,
+        "num_adv_models": 10,
+        "batch_size": 1280,
+        "attack_type": [
+            "att_ratio"
+        ],
+        "ratios": [
+            1.0
+        ],
+        "regression_config": {
+            "additional_values_to_test": null
+        },
+        "preload": true,
+        "kl_frac": 0.8,
+        "merlin_std": 0.5,
+        "merlin_neighbors": 10
+    },
+    "num_victim_models": 10
+}
