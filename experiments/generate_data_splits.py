@@ -1,9 +1,15 @@
+# Process data for all splits
+# from multiprocess import set_start_method
+# set_start_method("spawn")
+
 from distribution_inference.datasets.utils import get_dataset_wrapper, get_dataset_information
 from distribution_inference.config import DatasetConfig
 
-di = get_dataset_information("celeba_person")()
+di = get_dataset_information("librispeech")()
 # di.generate_victim_adversary_splits(adv_ratio=0.25, test_ratio=0.15)
-di.generate_victim_adversary_splits(adv_ratio=0.2)
+di.generate_victim_adversary_splits()
+di.prepare_processed_data()
+# di.generate_victim_adversary_splits(adv_ratio=0.2)
 # ds = get_dataset_wrapper("maadface")
 # x = ds(None)
 # z = x.ds.get_data("victim", 1.0, "ethnicity")

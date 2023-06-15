@@ -1,12 +1,10 @@
 from transformers import WhisperFeatureExtractor
-from transformers import WhisperTokenizer, WhisperTokenizerFast
+from transformers import WhisperTokenizerFast
+from transformers import WhisperTokenizer
 from transformers import WhisperProcessor
 from transformers import WhisperForConditionalGeneration
 
 from distribution_inference.models.core import BaseModel
-
-import torch as ch
-from datasets import Audio
 
 
 class WhisperASR(BaseModel):
@@ -14,14 +12,19 @@ class WhisperASR(BaseModel):
         super().__init__(is_asr_model=True, is_hf_model=True)
         self.name = name
         self.feature_extractor = WhisperFeatureExtractor.from_pretrained(name)
-        self.tokenizer = WhisperTokenizerFast.from_pretrained(name, language="English", task="transcribe")
-        self.processor = WhisperProcessor.from_pretrained(name, language="English", task="transcribe")
+        self.tokenizer_fast = WhisperTokenizerFast.from_pretrained(name)
+        self.tokenizer = WhisperTokenizer.from_pretrained(name)
+        self.processor = WhisperProcessor.from_pretrained(name)
         self.model = WhisperForConditionalGeneration.from_pretrained(name)
 
-        self.model.config.forced_decoder_ids = self.processor.get_decoder_prompt_ids(
-            language="en", task="transcribe")
+        # make sure model uses 50257 as BOS
+        # bos = self.tokenizer("<|startoftranscript|>").input_ids[0]
+        # self.model.config.decoder_start_token_id = bos
+
+        self.model.config.forced_decoder_ids = None
         self.model.config.suppress_tokens = []
-    
+        self.model.config.use_cache = False
+
     def save(self, path, **kwargs):
         self.model.save_pretrained(path, **kwargs)
     
@@ -37,28 +40,14 @@ class WhisperASR(BaseModel):
 
 class WhisperTiny(WhisperASR):
     def __init__(self):
-        super().__init__("openai/whisper-tiny")
+        super().__init__("openai/whisper-tiny.en")
+
+
+class WhisperBase(WhisperASR):
+    def __init__(self):
+        super().__init__("openai/whisper-base.en")
 
 
 class WhisperSmall(WhisperASR):
     def __init__(self):
-        super().__init__("openai/whisper-small")
-
-
-def whisper_asr_process_data(dataset, feature_extractor, tokenizer,
-                             sampling_rate: int = 16000,
-                             n_proc: int = 4):
-    dataset_ = dataset.cast_column("audio", Audio(sampling_rate=sampling_rate))
-
-    def prepare_dataset(batch):
-        audio = batch["audio"]
-
-        # compute log-Mel input features from input audio array 
-        batch["input_features"] = feature_extractor(audio["array"], sampling_rate=sampling_rate).input_features[0]
-
-        # encode target text to label ids 
-        batch["labels"] = tokenizer(batch["text"]).input_ids
-        return batch
-
-    dataset_ = dataset_.map(prepare_dataset, num_proc=n_proc)
-    return dataset_
+        super().__init__("openai/whisper-small.en")

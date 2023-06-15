@@ -1,14 +1,12 @@
 from transformers import Seq2SeqTrainingArguments
-from transformers import Seq2SeqTrainer
+from transformers import Seq2SeqTrainer, TrainerCallback
+from transformers.models.whisper.english_normalizer import BasicTextNormalizer
 
 from distribution_inference.config import TrainConfig
 
 import torch as ch
-import numpy as np
-from tqdm import tqdm
-import evaluate
 
-from whisper.normalizers import EnglishTextNormalizer
+import evaluate
 
 from dataclasses import dataclass
 from typing import Any, Dict, List, Union
@@ -47,11 +45,35 @@ class DataCollatorSpeechSeq2SeqWithPadding:
         return batch
 
 
+def tokenize_labels(dataset, tokenizer):
+    def prepare_dataset(batch):
+        # Librispeech ground-truth is in all CAPS, which maps to different tokens than lower-case
+        # which is not what we want (since most model predictions will be in lower-case)
+        # so we convert to lower-case here
+        lower_text = batch["text"].lower()
+        # encode target text to label ids
+        batch["labels"] = tokenizer(lower_text).input_ids
+        return batch
+
+    dataset_ = dataset.map(prepare_dataset,
+                           num_proc=8,
+                           remove_columns=["file", "speaker_id", "id", "chapter_id"])
+    return dataset_
+
+
 def train(model, datasets, train_config: TrainConfig):
     train_dataset, eval_dataset = datasets
     metric = evaluate.load("wer")
 
-    # Applicable for cheetah run. Freeeze encoder
+    # Process datasets
+    # Use fast tokenizer to tokenize labels before training starts
+    # And normal tokenizer later to fill in padding etc (since fast-tokenizer conflics with multiprocessing)
+    # train_dataset.set_internal_ds(tokenize_labels(train_dataset.get_internal_ds(), model.tokenizer_fast))
+    # eval_dataset.set_internal_ds(tokenize_labels(eval_dataset.get_internal_ds(), model.tokenizer_fast))
+    train_dataset.set_internal_ds(tokenize_labels(train_dataset.get_internal_ds(), model.tokenizer))
+    eval_dataset.set_internal_ds(tokenize_labels(eval_dataset.get_internal_ds(), model.tokenizer))
+
+    # Frozen encoder
     model.model.freeze_encoder()
 
     # Construct training args
@@ -63,11 +85,9 @@ def train(model, datasets, train_config: TrainConfig):
         learning_rate=train_config.learning_rate,
         weight_decay=train_config.weight_decay,
         warmup_steps=500,
-        # max_steps=5000,
         max_steps=train_config.epochs,
-        logging_steps=25,
-        # eval_steps=1000, # Set to 1000 later (or even 5000)
-        eval_steps=500,
+        logging_steps=100,
+        eval_steps=100,
         evaluation_strategy="steps",
         gradient_checkpointing=gradient_checkpointing,
         fp16=True,
@@ -84,68 +104,12 @@ def train(model, datasets, train_config: TrainConfig):
         torch_compile=True,
         dataloader_num_workers=4
     )
-    """
-    training_args = Seq2SeqTrainingArguments(
-        output_dir="./testing_training",
-        per_device_train_batch_size=train_config.batch_size,
-        gradient_accumulation_steps=train_config.gradient_accumulation_steps,  # increase by 2x for every 2x decrease in batch size
-        learning_rate=train_config.learning_rate,
-        weight_decay=train_config.weight_decay,
-        warmup_steps=500,
-        num_train_epochs=train_config.epochs,
-        gradient_checkpointing=gradient_checkpointing,
-        # use_cache=False if gradient_checkpointing else True,
-        fp16=True,
-        per_device_eval_batch_size=8, #train_config.batch_size // 2,
-        predict_with_generate=True,
-        generation_max_length=225,
-        save_strategy="no",
-        logging_strategy="epoch",
-        evaluation_strategy="epoch",
-        optim="adamw_torch",
-        # evaluation_strategy="steps",
-        # eval_steps=10,
-        report_to=["tensorboard"],
-        load_best_model_at_end=train_config.get_best,
-        metric_for_best_model="wer",
-        greater_is_better=False,
-        push_to_hub=False,
-        torch_compile=True,
-        dataloader_num_workers=2
-    )
-    """
-
-    """
-    # New args
-    gradient_checkpointing = True
-    training_args = Seq2SeqTrainingArguments(
-        output_dir="./testing_training",
-        per_device_train_batch_size=train_config.batch_size,
-        gradient_accumulation_steps=train_config.gradient_accumulation_steps,  # increase by 2x for every 2x decrease in batch size
-        learning_rate=train_config.learning_rate,
-        weight_decay=train_config.weight_decay,
-        warmup_steps=0,
-        num_train_epochs=train_config.epochs,
-        gradient_checkpointing=gradient_checkpointing,
-        # use_cache=False if gradient_checkpointing else True,
-        fp16=True,
-        per_device_eval_batch_size=train_config.batch_size // 2,
-        predict_with_generate=True,
-        generation_max_length=225,
-        save_strategy="no",
-        logging_strategy="epoch",
-        evaluation_strategy="epoch",
-        report_to=["tensorboard"],
-        load_best_model_at_end=train_config.get_best,
-        metric_for_best_model="wer",
-        greater_is_better=False,
-        push_to_hub=False,
-        lr_scheduler_type="constant"
-    )
-    """
 
     # Init data collator
     data_collator = DataCollatorSpeechSeq2SeqWithPadding(processor=model.processor)
+
+    # Define normalizer
+    normalizer = BasicTextNormalizer()
 
     # Define metrics (WER)
     def compute_metrics(pred):
@@ -156,13 +120,18 @@ def train(model, datasets, train_config: TrainConfig):
         label_ids[label_ids == -100] = model.tokenizer.pad_token_id
 
         # we do not want to group tokens when computing the metrics
-        pred_str = model.tokenizer.batch_decode(pred_ids, skip_special_tokens=True)
-        pred_str = [x.lstrip().strip() for x in pred_str]
+        pred_str  = model.tokenizer.batch_decode(pred_ids,  skip_special_tokens=True)
         label_str = model.tokenizer.batch_decode(label_ids, skip_special_tokens=True)
-        
         wer = 100 * metric.compute(predictions=pred_str, references=label_str)
 
-        return {"wer": wer}
+        # Compute WER for normalized text
+        # ground truth has already been converted to lower-case, so this will
+        # really only affect commas, periods, etc
+        pred_str = [normalizer(pred) for pred in pred_str]
+        label_str = [normalizer(label) for label in label_str]
+        normalized_wer = 100 * metric.compute(predictions=pred_str, references=label_str)
+
+        return {"wer": wer, "normalized_wer": normalized_wer}
 
     # Initialize trainer
     trainer = Seq2SeqTrainer(
@@ -174,6 +143,14 @@ def train(model, datasets, train_config: TrainConfig):
         compute_metrics=compute_metrics,
         tokenizer=model.processor.feature_extractor,
     )
+    
+    # Callback to evaluate at first step
+    # Useful to log metric of base model
+    class EvaluateFirstStepCallback(TrainerCallback):
+         def on_step_end(self, args, state, control, **kwargs):
+            if state.global_step == 1:
+                control.should_evaluate = True
+    trainer.add_callback(EvaluateFirstStepCallback())
 
     # Train (fine-tune, really) model
     trainer.train()
@@ -182,5 +159,9 @@ def train(model, datasets, train_config: TrainConfig):
     eval_results = trainer.evaluate(eval_dataset)
     loss = eval_results["eval_loss"]
     wer = eval_results["eval_wer"]
+
+    # Clean up dataset cache files when done training
+    train_dataset.clear_cache()
+    eval_dataset.clear_cache()
 
     return model, (loss, wer)

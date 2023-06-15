@@ -194,7 +194,7 @@ class CustomDatasetWrapper:
                     num_workers: int = 0,
                     prefetch_factor: int = 2,
                     train_sampler: Optional[Sampler] = None,
-                    pin_memory: bool = False,):
+                    pin_memory: bool = False):
         
         if self.shuffle_defense:
             # This function should return new loaders at every call

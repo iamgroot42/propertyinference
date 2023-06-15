@@ -57,8 +57,6 @@ if __name__ == "__main__":
     ds_info = get_dataset_information(
         data_config.name)(train_config.save_every_epoch)
     # Process data (one time per model type) if librispeech
-    if data_config.name == "librispeech":
-        ds_info.prepare_processed_data(train_config.model_arch)
 
     exp_name = "_".join([config.data_config.split,
                         config.data_config.prop,
@@ -110,8 +108,13 @@ if __name__ == "__main__":
         print("Training classifier %d / %d" % (i, train_config.num_models))
 
         # Get data loaders
-        train_loader, val_loader = ds.get_loaders(
-            batch_size=train_config.batch_size)
+        if data_config.name == "librispeech":
+            train_loader, val_loader = ds.get_loaders(
+                batch_size=train_config.batch_size,
+                model_arch=train_config.model_arch)
+        else:
+            train_loader, val_loader = ds.get_loaders(
+                batch_size=train_config.batch_size)
         # print(1/(len(train_loader.dataset)*train_config.batch_size))
         # print(len(val_loader.dataset))
         # print(len(train_loader.dataset))

@@ -110,9 +110,9 @@ def load_model(model, path, on_cpu: bool = False):
             if path.endswith(".ch"):
                 path = path[:-3]
             # Load model
-            model.load(path, map_location=map_location)
+            model.load(path)
             # Check if indices are also stored
-            if os.path.exists(os.payh.join(path, "indices.pt")):
+            if os.path.exists(os.path.join(path, "indices.pt")):
                 state_dict = ch.load(os.path.join(path, "indices.pt"), map_location=map_location)
                 return model, (state_dict["train_ids"], state_dict["test_ids"])
             else:
