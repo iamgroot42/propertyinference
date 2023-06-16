@@ -84,7 +84,7 @@ def train(model, datasets, train_config: TrainConfig):
         gradient_accumulation_steps=train_config.gradient_accumulation_steps,  # increase by 2x for every 2x decrease in batch size
         learning_rate=train_config.learning_rate,
         weight_decay=train_config.weight_decay,
-        warmup_steps=500,
+        warmup_steps=0, #500,
         max_steps=train_config.epochs,
         logging_steps=100,
         eval_steps=100,
