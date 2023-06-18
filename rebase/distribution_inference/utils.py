@@ -81,7 +81,7 @@ def get_synthetic_configs_path():
     """
         Path where synthetic config files are stored
     """
-    return "./configs/synthetic/data_configs"
+    return "../experiments/configs/synthetic/data_configs"  # changed due to issues with old path (temporary)
 
 
 def get_arxiv_node_params_mapping():
