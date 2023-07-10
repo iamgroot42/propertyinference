@@ -35,6 +35,10 @@ def train(model: BaseModel,
         from distribution_inference.training.contrastive import train as contrastive_train
         # Train model for contrastive learning
         return contrastive_train(model, loaders, train_config)
+    elif train_config.misc_config and train_config.misc_config.matchdg_config:
+        from distribution_inference.training.matchdg import train as matchdg_train
+        # Train model with matchDG
+        return matchdg_train(model, loaders, train_config)
     elif train_config.data_config.relation_config is not None:
         from distribution_inference.training.relation_net import train as relationnet_train
         # Train relation-net model

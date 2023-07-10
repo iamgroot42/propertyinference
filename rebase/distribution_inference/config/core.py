@@ -64,6 +64,19 @@ class ContrastiveConfig(Serializable):
 
 
 @dataclass
+class MatchDGConfig(Serializable):
+    """
+        Hyper-parameters for matchDG training.
+    """
+    tau: float = 0.05
+    """Temperature parameter for contrastive loss"""
+    total_matches_per_point: int = 100
+    """Total number of posotive matches to use per point (when using updated pairs)"""
+    match_update_freq: int = 2
+    """Frequency (en epochs) to updatee match pairs"""
+
+
+@dataclass
 class RelationConfig(Serializable):
     """
         Configuration for relation net training
@@ -180,6 +193,8 @@ class MiscTrainConfig(Serializable):
     """Configuration to be usef for shuffle-based defense"""
     contrastive_config: Optional[ContrastiveConfig] = None
     """Configuration to be used for contrastive training"""
+    matchdg_config: Optional[MatchDGConfig] = None
+    """Configuration to be used for matchDG training"""
 
 
 @dataclass

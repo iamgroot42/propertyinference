@@ -68,8 +68,10 @@ if __name__ == "__main__":
 
     # If ShuffleDefense, get non-shuffled train loader, process, then get actual ones
     shuffle_defense = None
+    matchdg_config = None
     if train_config.misc_config is not None:
         shuffle_defense_config = train_config.misc_config.shuffle_defense_config
+        matchdg_config = train_config.misc_config.matchdg_config
         if shuffle_defense_config and not train_config.expect_extra:
             raise ValueError(
                 "Need access to property labels for shuffle defense. Set expect_extra to True")
@@ -84,7 +86,8 @@ if __name__ == "__main__":
     ds = ds_wrapper_class(data_config,
                           epoch=train_config.save_every_epoch,
                           shuffle_defense=shuffle_defense,
-                          label_noise=train_config.label_noise)
+                          label_noise=train_config.label_noise,
+                          matchdg_config=matchdg_config)
 
     # train_ds, val_ds = ds.load_data()
     # y = []

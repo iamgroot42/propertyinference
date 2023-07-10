@@ -13,7 +13,7 @@ from facenet_pytorch import InceptionResnetV1
 import distribution_inference.datasets.base as base
 import distribution_inference.datasets.utils as utils
 import distribution_inference.models.core as models_core
-from distribution_inference.config import TrainConfig, DatasetConfig
+from distribution_inference.config import TrainConfig, DatasetConfig, MatchDGConfig
 from distribution_inference.training.utils import load_model
 
 
@@ -255,7 +255,9 @@ class CelebACustomBinary(base.CustomDataset):
                  transform=None,
                  features=None,
                  label_noise: float = 0,
-                 indices=None):
+                 indices=None,
+                 return_match_pairs: bool = False,
+                 total_matches_per_point: int = None):
         super().__init__()
         self.attr_dict = attr_dict
         self.transform = transform
@@ -290,6 +292,53 @@ class CelebACustomBinary(base.CustomDataset):
                     self.attr_dict[self.filenames[x]][classify]
 
         self.num_samples = len(self.filenames)
+
+        # match-DG related
+        self.return_match_pairs = return_match_pairs
+        self.total_matches_per_point = total_matches_per_point
+
+        # Useful for match-DG
+        if self.return_match_pairs:
+            # Create initial match-pairs
+            self.match_pairs_mapping = self._create_match_pairs()
+        
+        # # Ad this point, self.filenames is frozen (ordered), so we know relative
+        # # indices for label (task and prop) - can freeze it too for faster access,
+        # # as opposed to a dictionary lookup for each filename
+        # all_labels = list(map(lambda x: list(self.attr_dict[x].values()), self.filenames))
+        # all_labels = np.array(all_labels)
+        # self.y_labels = all_labels[:, self.classify_index]
+        # self.p_labels = all_labels[:, self.prop_index]
+    
+    def _create_match_pairs(self):
+        """
+            Relevant for match-DG
+            Creates initial match-pair mapping (same class, different domain)
+            As specified, pick random 'total_matches_per_point' matches per point
+        """
+        # Collect a,ll y, p labels
+        y_all, p_all = [], []
+        match_pairs_mapping = {}
+        for i in range(self.num_samples):
+            y_ = np.array(list(self.attr_dict[self.filenames[i]].values()))
+            y, p = y_[self.classify_index], y_[self.prop_index]
+            y_all.append(y)
+            p_all.append(p)
+        y_all = np.array(y_all)
+        p_all = np.array(p_all)
+
+        # Get matching pairs (same class, different domain) per point
+        for i in tqdm(range(self.num_samples), desc="Creating initial match pairs"):
+            matching_indices = np.where(np.logical_and(y_all[i] == y_all, p_all[i] != p_all))[0]
+            # Pick random indices
+            match_pairs_mapping[i] = np.random.choice(matching_indices, self.total_matches_per_point, replace=False)
+        return match_pairs_mapping
+
+    def set_match_pairs_mapping(self, mapping):
+        self.match_pairs_mapping = mapping
+    
+    def get_match_pairs_mapping(self):
+        return self.match_pairs_mapping
 
     def _create_df(self, attr_dict, filenames):
         # Create DF from filenames to use heuristic for ratio-preserving splits
@@ -358,6 +407,7 @@ class CelebACustomBinary(base.CustomDataset):
         if self.using_extra_data and self.mask is not None:
             raise ValueError("Cannot have mask and augmented data ")
 
+        # Relevant when useing pre-extracted features
         if self.features:
             if self.using_extra_data:
                 raise ValueError(
@@ -385,8 +435,13 @@ class CelebACustomBinary(base.CustomDataset):
 
         if should_augment:
             # Augment data
+            if self.return_match_pairs:
+                return self.process_fn((x, y[self.classify_index], y[self.prop_index])), self.match_pairs_mapping[idx_], idx
             return self.process_fn((x, y[self.classify_index], y[self.prop_index]))
 
+        if self.return_match_pairs:
+            eff_id = idx_.item() if isinstance(idx_, ch.Tensor) else idx_
+            return x, y[self.classify_index], y[self.prop_index], self.match_pairs_mapping[eff_id], eff_id
         return x, y[self.classify_index], y[self.prop_index]
 
 
@@ -396,7 +451,8 @@ class CelebaWrapper(base.CustomDatasetWrapper):
                  skip_data: bool = False,
                  label_noise: float = 0,
                  epoch: bool = False,
-                 shuffle_defense: ShuffleDefense = None,):
+                 shuffle_defense: ShuffleDefense = None,
+                 matchdg_config: MatchDGConfig = None,):
         super().__init__(data_config,
                          skip_data=skip_data,
                          label_noise=label_noise,
@@ -425,6 +481,13 @@ class CelebaWrapper(base.CustomDatasetWrapper):
             ]
             train_transforms = augment_transforms + train_transforms
         self.train_transforms = transforms.Compose(train_transforms)
+
+        # Match-DG related
+        self.return_match_pairs = False
+        self.total_matches_per_point = None
+        if matchdg_config is not None:
+            self.return_match_pairs = True
+            self.total_matches_per_point = matchdg_config.total_matches_per_point
 
     def prepare_processed_data(self, loader):
         # Load model
@@ -501,7 +564,10 @@ class CelebaWrapper(base.CustomDatasetWrapper):
             self.prop, self.ratio, cwise_sample[0],
             transform=self.train_transforms,
             features=features, label_noise=self.label_noise,
-            indices=indices[0])
+            indices=indices[0],
+            return_match_pairs=self.return_match_pairs,
+            total_matches_per_point=self.total_matches_per_point,
+            )
         ds_val = CelebACustomBinary(
             self.classify, filelist_test, attr_dict,
             self.prop, self.ratio, cwise_sample[1],

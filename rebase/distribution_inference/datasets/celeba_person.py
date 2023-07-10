@@ -9,7 +9,6 @@ import torch.nn as nn
 from typing import List
 
 import distribution_inference.datasets.base as base
-import distribution_inference.datasets.utils as utils
 import distribution_inference.models.contrastive as models_contrastive
 from distribution_inference.config import TrainConfig, DatasetConfig
 from distribution_inference.training.utils import load_model
@@ -36,6 +35,9 @@ class DatasetInformation(base.DatasetInformation):
         self.holdout_people = holdout_people # Number of people in holdout set (always part of victim training)
         self.audit_per_person = 10 # Number of images per person in audit set
         self.min_per_person = 20 # Minimum number of images per person in training set
+        self.hold_per_person_adv = 5 # Number of image per person (in adv) not to use for training
+        # Will be useful when computing metrics for audits, since we don't want to
+        # use exact records for in/out subject comparisons
 
     def get_model(self, parallel: bool = False, fake_relu: bool = False,
                   latent_focus=None, cpu: bool = False,
@@ -113,7 +115,7 @@ class DatasetInformation(base.DatasetInformation):
         # Discard people where < self.min_per_person images per person present
         train_map_keep = [k for k, v in train_map.items() if v >= self.min_per_person]
         train_mask = np.isin(ids, train_map_keep)
-        test_map_keep = [k for k, v in test_map.items() if v > self.min_per_person]
+        test_map_keep = [k for k, v in test_map.items() if v >= self.min_per_person]
         test_mask = np.isin(ids, test_map_keep)
 
         # Splits on test data
@@ -193,7 +195,6 @@ def make_mapping(labels):
 class CelebAPerson(base.CustomDataset):
     def __init__(self, filenames_list,
                  labels_list,
-                 remap_classes: bool,
                  shuffle: bool = False,
                  transform = None,
                  person_of_interest_indicator: np.ndarray = None):
@@ -206,13 +207,7 @@ class CelebAPerson(base.CustomDataset):
         if self.person_of_interest_indicator is not None:
             assert len(self.person_of_interest_indicator) == len(self.filenames_list), "Person of interest indicator must be same length as filenames list!"
 
-        if remap_classes:
-            # Transform random labels to (0, n)
-            # Keep track of mapping
-            self.mapping = make_mapping(labels_list)
-            self.labels_list = np.array([self.mapping[p] for p in labels_list])
-        else:
-            self.labels_list = np.array(labels_list)
+        self.labels_list = np.array(labels_list)
 
         if shuffle:
             shuffle_order = np.arange(len(self.filenames_list))
@@ -266,7 +261,7 @@ class CelebaPersonWrapper(base.CustomDatasetWrapper):
         # if self.classify not in self.info_object.preserve_properties:
         #     raise ValueError("Specified label not available for images")
 
-        resize_to = 96 #128 #96
+        resize_to = 96
         train_transforms = [
             transforms.Resize((resize_to, resize_to)),
             transforms.ToTensor(),
@@ -289,6 +284,7 @@ class CelebaPersonWrapper(base.CustomDatasetWrapper):
         self.train_transforms = transforms.Compose(train_transforms)
 
         # Define number of people to pick for train, test
+        # Below is valid for 50:50 victim/adv splits
         # self._prop_wise_subsample_sizes = {
         #     "adv": (2500, 200),
         #     "victim": (2500, 200)
@@ -346,13 +342,37 @@ class CelebaPersonWrapper(base.CustomDatasetWrapper):
         labels = labels[labels == wanted_person]
         return paths, labels
 
-    def load_specified_data(self, people_ids: List[int]):
+    def load_specified_data(self, people_ids: List[int],
+                            not_in_train: bool = False,
+                            strictly_in_train: bool = False,
+                            n_pick: int = None):
+        if not_in_train and strictly_in_train:
+            raise ValueError("Cannot be both not_in_train and strictly_in_train")
         # Adjust number of people to sample from pool
         filenames, labels = self._pick_these_people(people_ids)
 
+        if not_in_train or strictly_in_train or (n_pick is not None):
+            # Only pick images for these people that were NOT used in training the model
+            filenames_new, labels_new = [], []
+            for identity in np.unique(labels):
+                filenames_ = sorted(filenames[labels == identity])
+                if not_in_train:
+                    filenames_ = filenames_[:self.info_object.hold_per_person_adv]
+                elif strictly_in_train:
+                    filenames_ = filenames_[self.info_object.hold_per_person_adv:]
+                
+                if n_pick is not None:
+                    # Pick n_pick random images per person
+                    # from already-shortlisted images
+                    filenames_ = np.random.choice(filenames_, n_pick, replace=False)
+
+                filenames_new.extend(filenames_)
+                labels_new.extend([identity] * len(filenames_))
+            filenames, labels = np.array(filenames_new), np.array(labels_new)
+
         ds_use = CelebAPerson(
             filenames, labels,
-            remap_classes=True,
+            shuffle=True,
             transform=self.test_transforms)
 
         return ds_use
@@ -375,6 +395,19 @@ class CelebaPersonWrapper(base.CustomDatasetWrapper):
             people_list_train, n_people_train)
         filenames_test, labels_test = self._pick_wanted_people(
             people_list_test, self.n_people_test)
+
+        # For each person, get filenames (sorted) and skip the first self.info_object.hold_per_person_adv records per person
+        # which will be used in audit mode (attack) but not actual training. Sorting ensures deterministic sampling of 
+        # records when training or auditing
+        if self.split == "adv":
+            filenames_train_new, labels_train_new = [], []
+            for identity in np.unique(labels_train):
+                filenames = sorted(filenames_train[labels_train == identity])
+                # If for training:
+                filenames = filenames[self.info_object.hold_per_person_adv:]
+                filenames_train_new.extend(filenames)
+                labels_train_new.extend([identity] * len(filenames))
+            filenames_train, labels_train = np.array(filenames_train_new), np.array(labels_train_new)
 
         person_of_interest_indicator = None
         if self.split == "victim" and self.ratio == 1:
@@ -405,17 +438,15 @@ class CelebaPersonWrapper(base.CustomDatasetWrapper):
         self.people_in_test = np.unique(labels_test)
 
         # Create datasets (let DS objects handle mapping of labels)
-        # Could probably skip the hassle of 'remap_classes' below (since RemapLabels does it anyway)
-        # but no harm in keeping it
         ds_train = CelebAPerson(
             filenames_train, labels_train,
-            remap_classes=True,
+            shuffle=True,
             transform=self.train_transforms,
             person_of_interest_indicator=person_of_interest_indicator if self.split == "victim" else None)
 
         ds_test = CelebAPerson(
             filenames_test, labels_test,
-            remap_classes=True,
+            shuffle=True,
             transform=self.test_transforms,
             person_of_interest_indicator=person_of_interest_indicator if self.split == "adv" else None)
         

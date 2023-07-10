@@ -84,10 +84,10 @@ def train(model, datasets, train_config: TrainConfig):
         gradient_accumulation_steps=train_config.gradient_accumulation_steps,  # increase by 2x for every 2x decrease in batch size
         learning_rate=train_config.learning_rate,
         weight_decay=train_config.weight_decay,
-        warmup_steps=0, #500,
+        warmup_steps=0,
         max_steps=train_config.epochs,
         logging_steps=100,
-        eval_steps=100,
+        eval_steps=1000,
         evaluation_strategy="steps",
         gradient_checkpointing=gradient_checkpointing,
         fp16=True,
@@ -98,7 +98,7 @@ def train(model, datasets, train_config: TrainConfig):
         optim="adamw_torch",
         report_to=["tensorboard"],
         load_best_model_at_end=train_config.get_best,
-        metric_for_best_model="wer",
+        metric_for_best_model="normalized_wer",
         greater_is_better=False,
         push_to_hub=False,
         torch_compile=True,
@@ -158,7 +158,7 @@ def train(model, datasets, train_config: TrainConfig):
     # Get metrics after model
     eval_results = trainer.evaluate(eval_dataset)
     loss = eval_results["eval_loss"]
-    wer = eval_results["eval_wer"]
+    wer = eval_results["eval_normalized_wer"]
 
     # Clean up dataset cache files when done training
     train_dataset.clear_cache()

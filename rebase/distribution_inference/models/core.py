@@ -242,6 +242,9 @@ class MyAlexNet(BaseModel):
         self.features = nn.Sequential(*layers)
         self.avgpool = nn.AdaptiveAvgPool2d((6, 6))
         self.classifier = nn.Sequential(*clf_layers)
+    
+    def get_embedding(self, x: ch.Tensor):
+        return self.forward(x, latent=4)
 
     def forward(self, x: ch.Tensor,
                 latent: int = None,

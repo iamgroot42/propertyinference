@@ -172,13 +172,22 @@ class CustomDatasetWrapper:
     def get_used_indices(self):
         raise NotImplementedError("Dataset does not implement get_used_indices")
 
-    def load_specified_data(self, people_ids: List):
+    def load_specified_data(self,
+                            people_ids: List,
+                            not_in_train: bool = False,
+                            strictly_in_train: bool = False):
         raise NotImplementedError("Dataset does not implement load_specified_data")
     
     def get_specified_loader(self, indices: List,
                              batch_size: int,
-                             shuffle: bool = True,):
-        ds_use = self.load_specified_data(indices)
+                             shuffle: bool = True,
+                             not_in_train: bool = False,
+                             strictly_in_train: bool = False,
+                             n_pick: int = None):
+        ds_use = self.load_specified_data(indices,
+                                          not_in_train=not_in_train,
+                                          strictly_in_train=strictly_in_train,
+                                          n_pick=n_pick)
         loader_use = DataLoader(
             ds_use,
             batch_size=batch_size,
