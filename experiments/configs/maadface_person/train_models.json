@@ -1,0 +1,29 @@
+{
+    "data_config": {
+        "name": "maadface_person",
+        "prop": "size",
+        "classify": null,
+        "split": "adv",
+        "value": 0.5,
+        "augment": false,
+        "relation_config": {
+            "n_way": 5,
+            "k_shot": 5,
+            "num_query_train": 5,
+            "num_query_test": 5,
+            "test_num_task": 100
+        }
+    },
+    "epochs": 50,
+    "offset": 0,
+    "learning_rate": 1e-3,
+    "batch_size": 1,
+    "weight_decay": 1e-4,
+    "num_models": 1,
+    "get_best": true,
+    "verbose": false,
+    "model_arch": "scnn_relation",
+    "parallel": false,
+    "multi_class": true,
+    "save_indices_used": true
+}

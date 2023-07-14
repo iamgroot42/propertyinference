@@ -7,7 +7,7 @@ from typing import List
 
 import distribution_inference.datasets.base as base
 import distribution_inference.models.asr as models_asr
-from distribution_inference.config import TrainConfig, DatasetConfig
+from distribution_inference.config import TrainConfig, DatasetConfig, MatchDGConfig
 from distribution_inference.training.utils import load_model
 from distribution_inference.utils import model_compile_supported
 from distribution_inference.utils import warning_string
@@ -258,7 +258,8 @@ class LibriSpeechWrapper(base.CustomDatasetWrapper):
                  skip_data: bool = False,
                  label_noise: float = 0,
                  epoch: bool = False,
-                 shuffle_defense: ShuffleDefense = None):
+                 shuffle_defense: ShuffleDefense = None,
+                 matchdg_config: MatchDGConfig = None):
         super().__init__(data_config,
                          skip_data=skip_data,
                          label_noise=label_noise,

@@ -452,7 +452,7 @@ class CelebaWrapper(base.CustomDatasetWrapper):
                  label_noise: float = 0,
                  epoch: bool = False,
                  shuffle_defense: ShuffleDefense = None,
-                 matchdg_config: MatchDGConfig = None,):
+                 matchdg_config: MatchDGConfig = None):
         super().__init__(data_config,
                          skip_data=skip_data,
                          label_noise=label_noise,

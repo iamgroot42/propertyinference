@@ -282,6 +282,8 @@ class TrainConfig(Serializable):
     """Save extra information (indices of train/test data used)?"""
     gradient_accumulation_steps: Optional[int] = 1
     """Number of steps to accumulate gradients over (applies to HF training)"""
+    freeze_encoder: Optional[bool] = True
+    """Relevant for ASR/Huggingface: freeze encoder?"""
 
 
 @dataclass
