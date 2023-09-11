@@ -60,6 +60,12 @@ if __name__ == "__main__":
     # Get dataset wrapper
     ds_wrapper_class = get_dataset_wrapper(data_config.name)
 
+    # If adversary uses different data config, we'll need to use that wrapper
+    if attack_config.adv_ds_config is not None:
+        ds_wrapper_class_adv = get_dataset_wrapper(attack_config.adv_ds_config.name)
+    else:
+        ds_wrapper_class_adv = ds_wrapper_class
+
     # Get dataset info object
     ds_info = get_dataset_information(data_config.name)()
 
@@ -67,13 +73,17 @@ if __name__ == "__main__":
     data_config_adv_1, data_config_vic_1 = get_dfs_for_victim_and_adv(
         data_config)
     
+    # Use provided convig for adv-ds (if available)
+    if attack_config.adv_ds_config is not None:
+        data_config_adv_1 = attack_config.adv_ds_config
+    
     ds_vic_1 = ds_wrapper_class(
         data_config_vic_1,
         # skip_data=True,
         skip_data=False,
         label_noise=train_config.label_noise,
         epoch=attack_config.train_config.save_every_epoch)
-    ds_adv_1 = ds_wrapper_class(data_config_adv_1)
+    ds_adv_1 = ds_wrapper_class_adv(data_config_adv_1)
     train_adv_config = get_train_config_for_adv(train_config, attack_config)
 
     relation_net_based = train_config.data_config.relation_config is not None
@@ -99,6 +109,16 @@ if __name__ == "__main__":
             data_config_adv_2, data_config_vic_2 = get_dfs_for_victim_and_adv(
                 data_config, prop_value=prop_value)
 
+            # Use provided convig for adv-ds (if available)
+            if attack_config.adv_ds_config is not None:
+                data_config_adv_2, _ = get_dfs_for_victim_and_adv(
+                    attack_config.adv_ds_config, prop_value=prop_value)
+            
+            # Use given (fixed) adv prop value, if requested
+            if attack_config.adv_value_fixed is not None:
+                data_config_adv_2, _ = get_dfs_for_victim_and_adv(
+                    data_config_adv_2, prop_value=attack_config.adv_value_fixed)
+
             # Create new DS object for both and victim (for other ratio)
             ds_vic_2 = ds_wrapper_class(
                 data_config_vic_2,
@@ -106,7 +126,7 @@ if __name__ == "__main__":
                 # skip_data=True,
                 label_noise=train_config.label_noise,
                 epoch=attack_config.train_config.save_every_epoch)
-            ds_adv_2 = ds_wrapper_class(data_config_adv_2)
+            ds_adv_2 = ds_wrapper_class_adv(data_config_adv_2)
 
             # Load victim models for other value
             models_vic_2 = ds_vic_2.get_models(

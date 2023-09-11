@@ -6,7 +6,7 @@
 import os
 from distribution_inference.defenses.active.shuffle import ShuffleDefense
 from torchvision import transforms
-import pickle
+from concurrent.futures import ThreadPoolExecutor
 from PIL import Image
 import torch as ch
 import numpy as np
@@ -28,15 +28,16 @@ class DatasetInformation(base.DatasetInformation):
                          data_path="vggface2",
                          models_path="models_maadface_person",
                          properties=['size'],
-                         values={'size': [0.2, 0.4, 0.5, 0.6, 0.8, 1.0]},
+                         values={'size': [0.01, 0.1, 0.2, 0.4, 0.5, 0.6, 0.8, 1.0]},
                          supported_models=["scnn_relation"],
                          default_model="scnn_relation",
-                         epoch_wise=epoch_wise)
-        self.audit_per_person = 10  # Number of images per person in audit set
-        # Not needed for this dataset: all users have >= 87 images
-        self.min_per_person = 20  # Minimum number of images per person in training set
+                         epoch_wise=epoch_wise,
+                         user_level_mi=True)
+        self.audit_per_person = 50  # Number of images per person in audit set
+        self.min_per_person = 100  # Minimum number of images per person in training set
         self.holdout_people = 500 # Number of people in holdout (never used in training)
-        
+        self.max_per_person = 50 # Maximum number of images per person in training set
+
     def get_model(self, parallel: bool = False, fake_relu: bool = False,
                   latent_focus=None, cpu: bool = False,
                   model_arch: str = None,
@@ -79,6 +80,11 @@ class DatasetInformation(base.DatasetInformation):
 
         # Shuffle people
         np.random.shuffle(all_names_train)
+
+        # Remove people with less than self.min_per_person images
+        all_names_train_ints = [int(x[1:]) for x in all_names_train]
+        counts, identities = parallel_read(self.base_data_dir, all_names_train_ints, "train", counter_mode=True)
+        all_names_train = identities[counts >= self.min_per_person]        
 
         # Set aside holdout people
         num_holdout = self.holdout_people
@@ -124,14 +130,12 @@ class MAADPerson(base.CustomDataset):
     def __getitem__(self, idx):
         # Open image
         filename = self.filenames_list[idx]
-        x = Image.open(os.path.join(
-            self.info_object.base_data_dir, "data", filename))
+        x = Image.open(filename)
         if self.transform:
             x = self.transform(x)
 
         y = self.labels_list[idx]
         # Parse to remove first 'n' character and get a numeric label
-        y = int(y[1:])
 
         return x, y, 0
 
@@ -182,33 +186,31 @@ class MAADPersonWrapper(base.CustomDatasetWrapper):
                 f"Number of people requested ({n_people}) is greater than number of people in file ({len(wanted_people)})")
         if n_people is not None:
             wanted_people = np.random.choice(wanted_people, n_people, replace=False)
+        # Convert from string to integers
+        wanted_people = list(map(lambda x: int(x[1:]), wanted_people))
         return self._pick_these_people(wanted_people, subdir=subdir)
 
-    def _pick_these_people(self, these_people: List[str], subdir: str = "train"):
+    def _pick_these_people(self, these_people: List[int], subdir: str = "train"):
         """
             Pick specified people and their data
         """
-        filenames, identities = [], []
-
-        for identity in these_people:
-            within = os.listdir(os.path.join(self.info_object.base_data_dir, subdir, identity))
-            # Make paths absolute (relative to data directory)
-            within = [os.path.join(self.info_object.base_data_dir, subdir, identity, x) for x in within]
-            filenames.extend(within)
-            identities.extend([identity] * len(within))
-        filenames = np.array(filenames)
-        identities = np.array(identities)
+        filenames, identities = parallel_read(self.info_object.base_data_dir, these_people, subdir)
 
         # Essentially (path, label)
         return filenames, identities
 
-    def load_specified_data(self, people_ids: List[int],
+    def load_specified_data(self, people_ids: List[str],
                             not_in_train: bool = False,
                             strictly_in_train: bool = False,
                             n_pick: int = None):
         if not_in_train and strictly_in_train:
             raise ValueError(
                 "Cannot be both not_in_train and strictly_in_train")
+        
+        # Convert people_ids to list of integers (if they are string identifiers starting with 'n')
+        if type(people_ids[0]) != np.int64 and people_ids[0][0] == 'n':
+            people_ids = list(map(lambda x: int(x[1:]), people_ids))
+
         # Adjust number of people to sample from pool
         filenames, labels = self._pick_these_people(people_ids)
 
@@ -266,8 +268,8 @@ class MAADPersonWrapper(base.CustomDatasetWrapper):
         filenames_train_new, labels_train_new = [], []
         for identity in np.unique(labels_train):
             filenames = sorted(filenames_train[labels_train == identity])
-            # If for training:
-            filenames = filenames[self.info_object.audit_per_person:]
+            # For training, do not use more than self.info_object.max_per_person images per person
+            filenames = filenames[self.info_object.audit_per_person:self.info_object.max_per_person + self.info_object.audit_per_person]
             filenames_train_new.extend(filenames)
             labels_train_new.extend([identity] * len(filenames))
         filenames_train, labels_train = np.array(filenames_train_new), np.array(labels_train_new)
@@ -318,13 +320,11 @@ class MAADPersonWrapper(base.CustomDatasetWrapper):
 
     def get_non_members(self, used_ids: List[int]):
         # Use splits_holdout.txt - none of these members are used in training
-        people_list_train = read_names_file(os.path.join(
+        wanted_people = read_names_file(os.path.join(
             self.info_object.base_data_dir,
             "splits_person",
             "splits_holdout.txt"))
 
-        with open(people_list_train, 'r') as f:
-            wanted_people = f.read().splitlines()
         non_members = list([x for x in wanted_people])
         return np.array(non_members)
 
@@ -384,3 +384,36 @@ def read_names_file(x):
     with open(x, 'r') as f:
         lines = f.read().splitlines()
     return lines
+
+
+def parallel_read(base_data_dir:str, these_people: List[int],  subdir: str, counter_mode: bool = False):
+    """
+        Pick specified people and their data.
+        counter_mode: Whether we need just # of images per person (true) or their paths too (false).
+    """
+    def process_identity(identity):
+        identity_str = f'n{identity:06}'
+        subp = os.path.join(base_data_dir, subdir, identity_str)
+        # Make paths absolute (relative to data directory)
+        within = [os.path.join(subp, i.path) for i in os.scandir(subp)]
+        if counter_mode:
+            return len(within), identity_str
+        return within, [identity] * len(within)
+
+    with ThreadPoolExecutor() as executor:
+        results = list(tqdm(executor.map(process_identity, these_people), total=len(these_people), desc="Loading data"))
+
+    filenames, identities = [], []
+    if counter_mode:
+        for result in results:
+            filenames.append(result[0])
+            identities.append(result[1])
+    else:
+        for result in results:
+            filenames.extend(result[0])
+            identities.extend(result[1])
+    
+    filenames = np.array(filenames)
+    identities = np.array(identities)
+
+    return filenames, identities

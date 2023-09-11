@@ -5,11 +5,13 @@ from transformers.models.whisper.english_normalizer import BasicTextNormalizer
 from distribution_inference.config import TrainConfig
 
 import torch as ch
-
 import evaluate
-
 from dataclasses import dataclass
 from typing import Any, Dict, List, Union
+
+
+import multiprocess.context as ctx
+ctx._force_start_method('spawn')
 
 
 @dataclass
@@ -57,6 +59,7 @@ def tokenize_labels(dataset, tokenizer):
 
     dataset_ = dataset.map(prepare_dataset,
                            num_proc=8,
+                        #    num_proc=1,
                            remove_columns=["file", "speaker_id", "id", "chapter_id"])
     return dataset_
 
@@ -67,14 +70,15 @@ def train(model, datasets, train_config: TrainConfig):
 
     # Process datasets
     # Use fast tokenizer to tokenize labels before training starts
-    # And normal tokenizer later to fill in padding etc (since fast-tokenizer conflics with multiprocessing)
+    # And normal tokenizer later to fill in padding etc (since fast-tokenizer conflicts with multiprocessing)
     # train_dataset.set_internal_ds(tokenize_labels(train_dataset.get_internal_ds(), model.tokenizer_fast))
     # eval_dataset.set_internal_ds(tokenize_labels(eval_dataset.get_internal_ds(), model.tokenizer_fast))
     train_dataset.set_internal_ds(tokenize_labels(train_dataset.get_internal_ds(), model.tokenizer))
     eval_dataset.set_internal_ds(tokenize_labels(eval_dataset.get_internal_ds(), model.tokenizer))
 
-    # Frozen encoder
-    model.model.freeze_encoder()
+    if train_config.freeze_encoder:
+        # Frozen encoder
+        model.model.freeze_encoder()
 
     # Construct training args
     gradient_checkpointing = True
@@ -87,7 +91,8 @@ def train(model, datasets, train_config: TrainConfig):
         warmup_steps=0,
         max_steps=train_config.epochs,
         logging_steps=100,
-        eval_steps=1000,
+        # eval_steps=1000,
+        eval_steps=500,
         evaluation_strategy="steps",
         gradient_checkpointing=gradient_checkpointing,
         fp16=True,

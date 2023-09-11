@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from lib2to3.pgen2.token import OP
-from typing import Optional, List
+from typing import Optional, List, Union
 import numpy as np
 from simple_parsing.helpers import Serializable, field
 
@@ -68,12 +68,14 @@ class MatchDGConfig(Serializable):
     """
         Hyper-parameters for matchDG training.
     """
+    contrastive_epochs: int 
+    """Number of epochs to run Phase 1 for"""
     tau: float = 0.05
     """Temperature parameter for contrastive loss"""
     total_matches_per_point: int = 100
     """Total number of posotive matches to use per point (when using updated pairs)"""
     match_update_freq: int = 2
-    """Frequency (en epochs) to updatee match pairs"""
+    """Frequency (en epochs) to update match pairs"""
 
 
 @dataclass
@@ -91,6 +93,8 @@ class RelationConfig(Serializable):
     """Number of query samples to use for test/val"""
     test_num_task: int
     """Number of times to sample from validation/test data"""
+    train_num_task: int
+    """Number of times to sample from train data"""
 
 
 @dataclass
@@ -284,6 +288,8 @@ class TrainConfig(Serializable):
     """Number of steps to accumulate gradients over (applies to HF training)"""
     freeze_encoder: Optional[bool] = True
     """Relevant for ASR/Huggingface: freeze encoder?"""
+    clip_grad_norm: Optional[float] = None
+    """If not none, clip gradients to this norm"""
 
 
 @dataclass
@@ -572,6 +578,11 @@ class AttackConfig(Serializable):
     """Which epoch to target for adversary. If not None, automatically use last epoch"""
     victim_target_epoch: Optional[int] = None
     """Which epoch to target for victim. If not None, automatically use last epoch"""
+
+    adv_ds_config: Optional[DatasetConfig] = None
+    """If not None, use this config for adv models and their data. Valid only for some attacks"""
+    adv_value_fixed: Optional[Union[float, int, str]] = None
+    """If not None, use this value for adv models and their data (regardless of victim ratio). Valid only for some attacks"""
 
 
 @dataclass

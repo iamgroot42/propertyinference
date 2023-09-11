@@ -10,7 +10,7 @@ from typing import List
 
 import distribution_inference.datasets.base as base
 import distribution_inference.models.contrastive as models_contrastive
-from distribution_inference.config import TrainConfig, DatasetConfig
+from distribution_inference.config import TrainConfig, DatasetConfig, MatchDGConfig
 from distribution_inference.training.utils import load_model
 from distribution_inference.utils import model_compile_supported
 from distribution_inference.datasets._contrastive_utils import NWays, KShots, LoadData, RemapLabels, TaskDataset, MetaDataset
@@ -26,12 +26,13 @@ class DatasetInformation(base.DatasetInformation):
         props = [str(x) for x in range(holdout_people)]
         super().__init__(name="Celeb-A Person",
                          data_path="celeba",
-                         models_path="models_celeba_person/80_20_split",
+                         models_path="models_celeba_person/50_50_split",
                          properties=props,
                          values={k: ratios for k in props},
-                         supported_models=["scnn_relation"],
+                         supported_models=["scnn_relation", "scnn_deeper_relation"],
                          default_model="scnn_relation",
-                         epoch_wise=epoch_wise)
+                         epoch_wise=epoch_wise,
+                         user_level_mi=True)
         self.holdout_people = holdout_people # Number of people in holdout set (always part of victim training)
         self.audit_per_person = 10 # Number of images per person in audit set
         self.min_per_person = 20 # Minimum number of images per person in training set
@@ -48,6 +49,8 @@ class DatasetInformation(base.DatasetInformation):
 
         if model_arch == "scnn_relation":
             model = models_contrastive.SCNNFaceAudit()
+        elif model_arch == "scnn_deeper_relation":
+            model = models_contrastive.SCNNDeeperFaceAudit()
         else:
             raise NotImplementedError("Model architecture not supported")
 
@@ -163,24 +166,24 @@ class DatasetInformation(base.DatasetInformation):
                 f.writelines("%s\n" % l for l in data)
 
         # Make sure directories exist (for split information)
-        os.makedirs(os.path.join(self.base_data_dir, "splits_person", "80_20", "adv"), exist_ok=True)
-        os.makedirs(os.path.join(self.base_data_dir, "splits_person", "80_20", "victim"), exist_ok=True)
+        os.makedirs(os.path.join(self.base_data_dir, "splits_person", "50_50", "adv"), exist_ok=True)
+        os.makedirs(os.path.join(self.base_data_dir, "splits_person", "50_50", "victim"), exist_ok=True)
 
         # Save audit-related information
         save(always_used_train, os.path.join(
-            "splits_person", "80_20", "victim", "always_used_train.txt"))
+            "splits_person", "50_50", "victim", "always_used_train.txt"))
         save(always_used_audit, os.path.join(
-            "splits_person", "80_20", "adv", "always_used_audit.txt"))
+            "splits_person", "50_50", "adv", "always_used_audit.txt"))
 
         # Save generated splits
         save(test_adv_people, os.path.join(
-            "splits_person", "80_20", "adv", "test.txt"))
+            "splits_person", "50_50", "adv", "test.txt"))
         save(test_victim_people, os.path.join(
-            "splits_person", "80_20", "victim", "test.txt"))
+            "splits_person", "50_50", "victim", "test.txt"))
         save(train_adv_people, os.path.join(
-            "splits_person", "80_20", "adv", "train.txt"))
+            "splits_person", "50_50", "adv", "train.txt"))
         save(train_victim_people, os.path.join(
-            "splits_person", "80_20", "victim", "train.txt"))
+            "splits_person", "50_50", "victim", "train.txt"))
 
 
 def make_mapping(labels):
@@ -245,7 +248,8 @@ class CelebaPersonWrapper(base.CustomDatasetWrapper):
                  skip_data: bool = False,
                  label_noise: float = 0,
                  epoch: bool = False,
-                 shuffle_defense: ShuffleDefense = None):
+                 shuffle_defense: ShuffleDefense = None,
+                 matchdg_config: MatchDGConfig = None):
         super().__init__(data_config,
                          skip_data=skip_data,
                          label_noise=label_noise,
@@ -285,14 +289,14 @@ class CelebaPersonWrapper(base.CustomDatasetWrapper):
 
         # Define number of people to pick for train, test
         # Below is valid for 50:50 victim/adv splits
-        # self._prop_wise_subsample_sizes = {
-        #     "adv": (2500, 200),
-        #     "victim": (2500, 200)
-        # }
         self._prop_wise_subsample_sizes = {
-            "adv": (800, 50),
-            "victim": (3500, 300)
+            "adv": (2500, 200),
+            "victim": (2500, 200)
         }
+        # self._prop_wise_subsample_sizes = {
+        #     "adv": (800, 50),
+        #     "victim": (3500, 300)
+        # }
         self.n_people, self.n_people_test = self._prop_wise_subsample_sizes[self.split]
 
     def _pick_wanted_people(self, wanted_people_path: str, n_people: int):
@@ -381,10 +385,10 @@ class CelebaPersonWrapper(base.CustomDatasetWrapper):
         # Use relevant file split information
         people_list_train = os.path.join(
             self.info_object.base_data_dir,
-            "splits_person", "80_20", self.split, "train.txt")
+            "splits_person", "50_50", self.split, "train.txt")
         people_list_test = os.path.join(
             self.info_object.base_data_dir,
-            "splits_person", "80_20", self.split, "test.txt")
+            "splits_person", "50_50", self.split, "test.txt")
         
         n_people_train = self.n_people
         if self.split == "victim" and self.ratio == 1:
@@ -414,7 +418,7 @@ class CelebaPersonWrapper(base.CustomDatasetWrapper):
             # Will be part of training
             people_always_used = os.path.join(
                 self.info_object.base_data_dir,
-                "splits_person", "80_20", "victim", "always_used_train.txt")
+                "splits_person", "50_50", "victim", "always_used_train.txt")
             filenames_always_train, labels_always_train = self._load_data_for_always_included_people(people_always_used)
             if len(set(labels_train).intersection(set(labels_always_train))) != 0:
                 raise ValueError("Intersection between train and always_used_train is not empty- this should not happen!")
@@ -426,7 +430,7 @@ class CelebaPersonWrapper(base.CustomDatasetWrapper):
             # Will be part of testing (for auditing)
             people_always_used = os.path.join(
                 self.info_object.base_data_dir,
-                "splits_person", "80_20", "adv", "always_used_audit.txt")
+                "splits_person", "50_50", "adv", "always_used_audit.txt")
             filenames_always_test, labels_always_test = self._load_data_for_always_included_people(people_always_used)
             filenames_test = np.concatenate((filenames_test, filenames_always_test))
             person_of_interest_indicator = np.zeros(len(filenames_test))
@@ -481,7 +485,7 @@ class CelebaPersonWrapper(base.CustomDatasetWrapper):
         # Use relevant file split information
         people_list_train = os.path.join(
             self.info_object.base_data_dir,
-            "splits_person", "80_20", self.split, "train.txt")
+            "splits_person", "50_50", self.split, "train.txt")
         with open(people_list_train, 'r') as f:
             wanted_people = f.read().splitlines()
         wanted_people = set([int(x) for x in wanted_people])

@@ -8,6 +8,7 @@ from typing import List
 from distribution_inference.attacks.whitebox.permutation.permutation import PINAttack
 from distribution_inference.attacks.whitebox.affinity.affinity import AffinityAttack
 from distribution_inference.attacks.whitebox.finetune.finetune import FinetuneAttack
+from distribution_inference.attacks.whitebox.maini_neuron.maini_neuron import MainiNeuronAttack
 from distribution_inference.attacks.whitebox.core import BasicDataset
 from distribution_inference.config import WhiteBoxAttackConfig
 from distribution_inference.models.core import BaseModel
@@ -18,7 +19,8 @@ import distribution_inference.datasets.utils as utils
 ATTACK_MAPPING = {
     "permutation_invariant": PINAttack,
     "affinity": AffinityAttack,
-    "finetune": FinetuneAttack
+    "finetune": FinetuneAttack,
+    "maini_neuron": MainiNeuronAttack
 }
 
 
@@ -220,9 +222,25 @@ def _get_weight_layers(model: BaseModel,
     # Sort and store desired layers, if specified
     custom_layers_sorted = sorted(
         custom_layers) if custom_layers is not None else None
+    
+    # Used to keep track of batch-norm layers (and when to skip them)
+    is_skip_next_used_for_bn = False
 
     track = 0
     for name, param in model.named_parameters():
+        ### <BN-related logic> ###
+
+        # For now, we ignore batch-norm layers
+        if "weight" in name and len(param.shape) == 1:
+            is_skip_next_used_for_bn = True
+            continue
+
+        # Skip 'bias' of batch-norm layer as well
+        if is_skip_next_used_for_bn:
+            is_skip_next_used_for_bn = False
+            continue
+        ### </BN-related logic> ###
+
         # WEIGHT
         if "weight" in name:
             if track_grad:
@@ -338,15 +356,20 @@ def get_weight_layers(model: BaseModel,
             include_all=True,
             detach=detach,
             track_grad=track_grad)
-        dims_fc, fvec_fc = _get_weight_layers(
-            model.classifier,
-            first_n=attack_config.first_n_fc,
-            start_n=attack_config.start_n_fc,
-            custom_layers=attack_config.custom_layers_fc,
-            transpose_features=model.transpose_features,
-            prune_mask=prune_mask,
-            detach=detach,
-            track_grad=track_grad)
+
+        # Some models (relation-net, etc) may not have linear layers
+        if model.classifier is None:
+            dims_fc, fvec_fc = None, None
+        else:
+            dims_fc, fvec_fc = _get_weight_layers(
+                model.classifier,
+                first_n=attack_config.first_n_fc,
+                start_n=attack_config.start_n_fc,
+                custom_layers=attack_config.custom_layers_fc,
+                transpose_features=model.transpose_features,
+                prune_mask=prune_mask,
+                detach=detach,
+                track_grad=track_grad)
         # If PIN requested only FC layers, return only FC layers
         if attack_config.permutation_config:
             if attack_config.permutation_config.focus == "fc":

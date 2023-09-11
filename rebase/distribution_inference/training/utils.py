@@ -129,7 +129,7 @@ def load_model(model, path, on_cpu: bool = False):
             else:
                 model.load_state_dict(handle_compiled_weights(ch.load(path, map_location=map_location)))
     except Exception as e:
-        raise Exception("Could not load model from {}".format(path))
+        raise Exception("Could not load model from {}\n\n {}".format(path, e))
     return model
 
 

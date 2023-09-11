@@ -6,6 +6,8 @@ from distribution_inference.attacks.blackbox.core import PredictionsOnDistributi
 from distribution_inference.config.core import GenerativeAttackConfig
 from torch.utils.data import Dataset
 from distribution_inference.attacks.blackbox.per_point import PerPointThresholdAttack
+
+
 def get_differences(models, x_use, latent_focus, reduce=True):
     # View resulting activation distribution for current models
     reprs = ch.stack([m(x_use, latent=latent_focus).detach()
@@ -130,6 +132,7 @@ def gen_optimal(m1,m2, sample_shape, n_samples,
         return x_rand.clone().detach(), loss.item()
     return x_rand.clone().detach(), (l1 + l2).item()
 
+
 def generate_data(X_train_1, X_train_2, ds, batch_size:int, config:GenerativeAttackConfig,seed_data=None):
     if config.use_normal:
         _, test_loader = ds.get_loaders(batch_size)
@@ -174,6 +177,8 @@ def generate_data(X_train_1, X_train_2, ds, batch_size:int, config:GenerativeAtt
         
     x_use = x_opt
     return x_use.cpu()
+
+
 class BasicDataset(Dataset):
     def __init__(self, X, Y=None):
         self.X = X
@@ -189,6 +194,7 @@ class BasicDataset(Dataset):
         if self.Y is None:
             return self.X[idx]
         return self.X[idx], self.Y[idx]
+
 
 class GenerativeAttack(Attack):
     def gen_data(self,m1,m2,ds1,ds2, batch_size:int, config:GenerativeAttackConfig):
@@ -222,3 +228,4 @@ class GenerativeAttack(Attack):
                preds_vic: PredictionsOnDistributions):
         self.attack_object = PerPointThresholdAttack(self.config)
         return self.attack_object.attack(preds_adv,preds_vic,ground_truth=(None,None))
+    

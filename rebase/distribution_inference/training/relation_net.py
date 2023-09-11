@@ -1,6 +1,7 @@
 import torch as ch
 import numpy as np
 from copy import deepcopy
+from typing import List
 
 from torch.optim.lr_scheduler import StepLR
 
@@ -20,7 +21,7 @@ def _accuracy(predictions, targets, get_preds: bool = False):
     return acc
 
 
-def fast_adapt(model, data, labels, ways: int, shot: int, query_num: int, get_preds: bool = False):
+def fast_adapt(model, data, labels, ways: int, shot: int, query_num: int, get_preds: bool = False, pre_loss: bool = False):
     # Sort data samples by labels
     sort = ch.sort(labels)
     data = data.squeeze(0)[sort.indices].squeeze(0)
@@ -48,7 +49,8 @@ def fast_adapt(model, data, labels, ways: int, shot: int, query_num: int, get_pr
                                             sample_features.shape[3])
     feat_dim = sample_features.shape[2]
     sample_features = ch.mean(sample_features, 1).squeeze(1)
-    batch_features = model(batches, embedding_mode=True)  # 20x64*5*5
+    # 20x64*5*5
+    batch_features = model(batches, embedding_mode=True)
 
     # calculate relations
     # each batch sample link to every samples to calculate relations
@@ -65,6 +67,9 @@ def fast_adapt(model, data, labels, ways: int, shot: int, query_num: int, get_pr
     relations = model(relation_pairs, embedding_mode=False).view(-1, ways)
 
     mse = ch.nn.MSELoss()
+    if pre_loss:
+        return relations, batch_labels
+
     loss = mse(relations, F.one_hot(batch_labels).float())
     acc = _accuracy(relations, batch_labels, get_preds)
 
@@ -73,12 +78,13 @@ def fast_adapt(model, data, labels, ways: int, shot: int, query_num: int, get_pr
 
 def train_epoch(loader, model, optimizer, epoch: int,
                 n_way: int, k_shot: int, num_query: int,
-                verbose: bool = True):
+                train_num_task: int,
+                verbose: bool = True,
+                clip_grad_norm: float = None,):
     model.train()
 
     tot_loss, tot_acc, tot_items = 0, 0, 0
     # The loader here has len(1) but we sample from it multiple times
-    train_num_task = 150 #200
 
     iterator = range(train_num_task)
     if verbose:
@@ -93,8 +99,9 @@ def train_epoch(loader, model, optimizer, epoch: int,
 
         optimizer.zero_grad()
         loss.backward()
-        # Clip grad norm
-        # ch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
+        # Clip grad norm (on for VGGFace)
+        if clip_grad_norm is not None:
+            ch.nn.utils.clip_grad_norm_(model.parameters(), clip_grad_norm)
         optimizer.step()
 
         batch_size = data_input.size(0)
@@ -174,14 +181,13 @@ def train(model, loaders, train_config: TrainConfig):
 
     # Define optimizer
     if train_config.parallel:
-        optimizer = ch.optim.Adam([{'params': model.module.fe_model.parameters()}, {'params': model.module.relation_network.parameters()}],
+        optimizer = ch.optim.Adam([{'params': model.module.features.parameters()}, {'params': model.module.relation_network.parameters()}],
                                  lr=train_config.learning_rate, weight_decay=train_config.weight_decay)
     else:
-        optimizer = ch.optim.Adam([{'params': model.fe_model.parameters()}, {'params': model.relation_network.parameters()}],
+        optimizer = ch.optim.Adam([{'params': model.features.parameters()}, {'params': model.relation_network.parameters()}],
                                  lr=train_config.learning_rate, weight_decay=train_config.weight_decay)
 
     scheduler = StepLR(optimizer, step_size=10, gamma=0.5)
-    # scheduler = StepLR(optimizer, step_size=5, gamma=0.5)
 
     # Define iterator
     iterator = range(1, train_config.epochs + 1)
@@ -194,12 +200,15 @@ def train(model, loaders, train_config: TrainConfig):
     k_shot = relation_config.k_shot
     num_query_train = relation_config.num_query_train
     num_query_test = relation_config.num_query_test
+    train_num_task = relation_config.train_num_task
 
     best_loss = np.inf
     for i in iterator:
         vloss, vacc = None, 0.0
         tloss, tacc = train_epoch(train_loader, model, optimizer, epoch=i, n_way=n_way,
-                                  k_shot=k_shot, num_query=num_query_train, verbose=train_config.verbose)
+                                  k_shot=k_shot, num_query=num_query_train, train_num_task=train_num_task,
+                                  verbose=train_config.verbose,
+                                  clip_grad_norm=train_config.clip_grad_norm,)
         vloss, vacc = validate_epoch(use_loader_for_metric_log, model, n_way=n_way,
                                      k_shot=k_shot, num_query=num_query_test, verbose=train_config.verbose)
         if not (train_config.verbose or train_config.quiet):

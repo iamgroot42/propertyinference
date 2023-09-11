@@ -43,18 +43,32 @@ def train(model, loaders, train_config: TrainConfig):
     tau = matchdg_config.tau
     match_update_freq = matchdg_config.match_update_freq
     total_matches_per_point = matchdg_config.total_matches_per_point
+    contrastive_epochs = matchdg_config.contrastive_epochs
 
+    # Stage 1
     optim = ch.optim.SGD(model.parameters(),
                          lr=train_config.learning_rate,
                          weight_decay=train_config.weight_decay)
-    for e in range(train_config.epochs):
-        # Temporary:
+    for e in range(contrastive_epochs):
         updated_match_pairs(model, train_loader, train_config.batch_size, total_matches_per_point)
-        tloss = train_epoch(model, train_loader, optim, tau=tau, epoch=e+1, verbose=train_config.verbose)
+        tloss = train_epoch_contrastive(model, train_loader, optim, tau=tau, epoch=e+1, verbose=train_config.verbose)
         if (e + 1) % match_update_freq == 0:
             updated_match_pairs(model, train_loader, train_config.batch_size, total_matches_per_point)
     
-    # TODO: Add stage 2 of training (ERM)
+    # Stage 2
+    # Initialze new model from scratch
+    with ch.no_grad():
+        for layer in model.children():
+            if hasattr(layer, 'reset_parameters'):
+                layer.reset_parameters()
+    # Re-initialize optimizer
+    optim = ch.optim.SGD(model.parameters(),
+                         lr=train_config.learning_rate,
+                         weight_decay=train_config.weight_decay)
+
+    for e in range(train_config.epochs):
+        train_epoch_erm(model, train_loader, optim)
+
 
 
 def loss_fn(model, batch, embeds_x, dataset, tau: float):
@@ -139,7 +153,11 @@ def updated_match_pairs(model, loader, batch_size: int, total_matches_per_point:
     dataset.set_match_pairs_mapping(new_mapping_dict)
 
 
-def train_epoch(model, loader, optim, tau: float, epoch: int, verbose: bool = True,):
+def train_epoch_contrastive(model, loader, optim,
+                            tau: float, epoch: int, verbose: bool = True):
+    """
+        Stage 1 of MatchDG- training feature extractor using contrastive loss
+    """
     model.train()
     running_loss = 0.
     num_items = 0
@@ -167,3 +185,12 @@ def train_epoch(model, loader, optim, tau: float, epoch: int, verbose: bool = Tr
         num_items += batch[0].shape[0]
 
     return running_loss / num_items
+
+
+def train_epoch_erm(model, loader, optim):
+    """
+        Stage 2 of MatchDG- using inferred losses, and using a mix of
+        inferred-match data and random-sample data. Contrastive+ERM loss on
+        the first half, and just ERM on the second.
+    """
+    model.train()

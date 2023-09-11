@@ -3,6 +3,8 @@ from transformers import WhisperTokenizerFast
 from transformers import WhisperTokenizer
 from transformers import WhisperProcessor
 from transformers import WhisperForConditionalGeneration
+from transformers import Speech2TextProcessor, Speech2TextForConditionalGeneration
+from transformers import Speech2TextTokenizer, Speech2TextFeatureExtractor
 
 from distribution_inference.models.core import BaseModel
 
@@ -12,8 +14,8 @@ class WhisperASR(BaseModel):
         super().__init__(is_asr_model=True, is_hf_model=True)
         self.name = name
         self.feature_extractor = WhisperFeatureExtractor.from_pretrained(name)
-        self.tokenizer_fast = WhisperTokenizerFast.from_pretrained(name)
         self.tokenizer = WhisperTokenizer.from_pretrained(name)
+        self.tokenizer_fast = WhisperTokenizerFast.from_pretrained(name)
         self.processor = WhisperProcessor.from_pretrained(name)
         self.model = WhisperForConditionalGeneration.from_pretrained(name)
 
@@ -51,3 +53,31 @@ class WhisperBase(WhisperASR):
 class WhisperSmall(WhisperASR):
     def __init__(self):
         super().__init__("openai/whisper-small.en")
+
+
+class S2T(BaseModel):
+    def __init__(self, name: str):
+        super().__init__(is_asr_model=True, is_hf_model=True)
+        self.name = name
+        self.feature_extractor = Speech2TextFeatureExtractor.from_pretrained(
+            name)
+        self.tokenizer = Speech2TextTokenizer.from_pretrained(name)
+        self.tokenizer_fast = self.tokenizer
+        self.processor = Speech2TextProcessor.from_pretrained(name)
+        self.model = Speech2TextForConditionalGeneration.from_pretrained(name)
+
+        self.model.config.forced_decoder_ids = None
+        self.model.config.suppress_tokens = []
+        self.model.config.use_cache = False
+
+    def save(self, path, **kwargs):
+        self.model.save_pretrained(path, **kwargs)
+
+    def load(self, path, **kwargs):
+        self.model = self.model.from_pretrained(path, **kwargs)
+
+    def forward(self, **kwargs):
+        """
+            Simply forward to self.model
+        """
+        return self.model(**kwargs)

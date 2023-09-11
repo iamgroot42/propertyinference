@@ -1,6 +1,6 @@
 """
     Most of the code on contrastive training is heavily based on https://github.com/ronghuaiyang/arcface-pytorch/
-    I have only made modifications to fit it into my package and add features wherever necessary.
+    Modified  to fit  into my package and add features wherever necessary.
 """
 
 import torch as ch
@@ -15,32 +15,7 @@ from distribution_inference.datasets.utils import get_match_scores
 
 from distribution_inference.utils import warning_string
 
-
 from tqdm import tqdm
-import os
-
-# train_transform = transforms.Compose([  # refer to https://pytorch.org/docs/stable/torchvision/transforms.html for more build-in online data augmentation
-#     transforms.Resize([int(128 * INPUT_SIZE[0] / 112),
-#                       int(128 * INPUT_SIZE[0] / 112)]),  # smaller side resized
-#     transforms.RandomCrop([INPUT_SIZE[0], INPUT_SIZE[1]]),
-#     transforms.RandomHorizontalFlip(),
-#     transforms.ToTensor(),
-#     transforms.Normalize(mean=RGB_MEAN, std=RGB_STD),
-# ])
-
-# dataset_train = datasets.ImageFolder(
-#     os.path.join(DATA_ROOT, 'imgs'), train_transform)
-
-# create a weighted random sampler to process imbalanced data
-# weights = make_weights_for_balanced_classes(
-#     dataset_train.imgs, len(dataset_train.classes))
-# weights = torch.DoubleTensor(weights)
-# sampler = torch.utils.data.sampler.WeightedRandomSampler(weights, len(weights))
-
-# train_loader = torch.utils.data.DataLoader(
-#     dataset_train, batch_size=BATCH_SIZE, sampler=sampler, pin_memory=PIN_MEMORY,
-#     num_workers=NUM_WORKERS, drop_last=DROP_LAST
-# )
 
 
 def train_epoch(loader, model, criterion, optimizer, epoch, verbose: bool = True):

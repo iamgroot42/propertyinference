@@ -10,7 +10,7 @@ from typing import List, Optional
 import warnings
 
 from distribution_inference.utils import warning_string, log
-from distribution_inference.config import DatasetConfig, TrainConfig, WhiteBoxAttackConfig
+from distribution_inference.config import DatasetConfig, TrainConfig, WhiteBoxAttackConfig, RelationConfig
 from distribution_inference.attacks.whitebox.utils import get_weight_layers
 import distribution_inference.datasets.utils as utils
 
@@ -36,12 +36,14 @@ class DatasetInformation:
                  default_model: str,
                  property_focus: dict = None,
                  epoch_wise: bool = False,
-                 num_dropped_features: int = 0):
+                 num_dropped_features: int = 0,
+                 user_level_mi: bool = False):
         """
             data_path : path to dataset
             models_path: path to models
             properties: list of properties supported for experiments
             values(dict): list of values for each property
+            user_level_mi (bool) : is property related to user-level MI?
         """
         self.base_data_dir = os.path.join(
             Constants.base_data_directory, data_path)
@@ -58,6 +60,7 @@ class DatasetInformation:
         self.num_dropped_features = num_dropped_features
         self.supported_models = supported_models
         self.default_model = default_model
+        self.user_level_mi = user_level_mi
     
     @ch.no_grad()
     def _collect_features(self, loader, model,
@@ -158,6 +161,9 @@ class CustomDatasetWrapper:
         self.is_graph_data = is_graph_data
         self.adv_use_frac = data_config.adv_use_frac
         self.relation_config = data_config.relation_config
+        if type(self.relation_config) is dict:
+            # Convert from dict to RelationConfig
+            self.relation_config = RelationConfig(**self.relation_config)
 
         # Either set ds_train and ds_val here
         # Or set them inside get_loaders
@@ -242,25 +248,19 @@ class CustomDatasetWrapper:
             prefetch_factor = None
                     
         # This function should return new loaders at every call
-        train_loader = DataLoader(
-            self.ds_train,
-            batch_size=batch_size,
-            shuffle=shuffle,
-            num_workers=num_workers,
-            worker_init_fn=utils.worker_init_fn,
-            pin_memory=pin_memory,
-            prefetch_factor=prefetch_factor
-        )
-
-        test_loader = DataLoader(
-            self.ds_val,
-            batch_size=batch_size * val_factor,
-            shuffle=eval_shuffle,
-            num_workers=num_workers,
-            worker_init_fn=utils.worker_init_fn,
-            pin_memory=pin_memory,
-            prefetch_factor=prefetch_factor
-        )
+        train_loader = get_loader_for_data(self.ds_train,
+                                           batch_size=batch_size,
+                                           shuffle=shuffle,
+                                           num_workers=num_workers,
+                                           prefetch_factor=prefetch_factor,
+                                           pin_memory=pin_memory)
+    
+        test_loader = get_loader_for_data(self.ds_val,
+                                          batch_size=batch_size * val_factor,
+                                          shuffle=eval_shuffle,
+                                          num_workers=num_workers,
+                                          prefetch_factor=prefetch_factor,
+                                          pin_memory=pin_memory,)
 
         return train_loader, test_loader
 
@@ -491,7 +491,8 @@ class CustomDatasetWrapper:
                            epochwise_version: bool = False,
                            model_arch: str = None,
                            custom_models_path: str = None,
-                           target_epoch: int = None):
+                           target_epoch: int = None,
+                           get_extra_info: bool = False):
         """
             Extract features for a given model.
             Make sure only the parts that are needed inside the model are extracted
@@ -505,12 +506,13 @@ class CustomDatasetWrapper:
             custom_models_path=custom_models_path)
         i = 0
         feature_vectors = []
+        extra_info = []
         with tqdm(total=total_models, desc="Loading models") as pbar:
             if epochwise_version:
-                
                 model_paths = list(model_paths)
                 print(model_paths)
                 model_paths.sort(key=lambda i: int(i))
+
             for mpath in model_paths:
                 # Break reading if requested number of models is reached
                 if i >= n_models:
@@ -543,6 +545,7 @@ class CustomDatasetWrapper:
                                     folder_path, mpath, mpath_inside),
                                     on_cpu=on_cpu,
                                     model_arch=model_arch)
+
                                 # Extract model features
                                 # Get model params, shift to GPU
                                 dims, feature_vector = get_weight_layers(
@@ -565,6 +568,7 @@ class CustomDatasetWrapper:
                     model_part_use = model
                     if type(model) == tuple:
                         model_part_use = model[0]
+                        extra_info.append(model[1])
 
                     # Extract model features
                     # Get model params, shift to GPU
@@ -591,6 +595,10 @@ class CustomDatasetWrapper:
                 f"\nNumber of models loaded ({len(feature_vectors)}) is less than requested ({n_models})"))
 
         feature_vectors = np.array(feature_vectors, dtype='object')
+        if get_extra_info and len(extra_info) > 0:
+            extra_info = np.array(extra_info, dtype='object')
+            return dims, feature_vectors, extra_info
+
         return dims, feature_vectors
 
     def get_features(self, train_config: TrainConfig,
@@ -656,3 +664,20 @@ def make_gallery_query_splits(loader,
         if added >= num_task:
             break
     return pairs
+
+
+def get_loader_for_data(data,
+                        batch_size: int,
+                        shuffle: bool = True,
+                        num_workers: int = 0,
+                        prefetch_factor: int = 2,
+                        pin_memory: bool = False):
+    return DataLoader(
+        data,
+        batch_size=batch_size,
+        shuffle=shuffle,
+        num_workers=num_workers,
+        worker_init_fn=utils.worker_init_fn,
+        pin_memory=pin_memory,
+        prefetch_factor=prefetch_factor)
+    

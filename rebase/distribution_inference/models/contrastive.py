@@ -229,7 +229,7 @@ class ArcFaceResnet(GenericArcFace):
 
 
 class RelationNetwork(nn.Module):
-    def __init__(self, input_size: int, hidden_size: int):
+    def __init__(self, input_size: int, hidden_size: int, multiplier: int = 5):
         super(RelationNetwork, self).__init__()
         self.layer1 = nn.Sequential(
             nn.Conv2d(input_size*2, 64, kernel_size=3, padding=1),
@@ -241,18 +241,25 @@ class RelationNetwork(nn.Module):
             nn.BatchNorm2d(64, momentum=1, affine=True),
             nn.ReLU(),
             nn.MaxPool2d(2))
+        self.multiplier = multiplier
         # The 5x5 below comes from the Conv, not n-way or k-way
         # Adjust according to input image size:
         # (32: 64*1*1) (84: 64*3*3) (96: 64*5*5) (112: 64*6*6) (160: 64*9*9) (224: 64*13*13)
-        self.fc1 = nn.Linear(input_size*5*5, hidden_size)
-        self.fc2 = nn.Linear(hidden_size, 1)
+        if multiplier > 1:
+            self.fc1 = nn.Linear(input_size*multiplier*multiplier, hidden_size)
+            self.fc2 = nn.Linear(hidden_size, 1)
+        else:
+            self.fc1 = nn.Linear(input_size, 1)
 
     def forward(self, x):
         out = self.layer1(x)
         out = self.layer2(out)
         out = out.view(out.size(0), -1)
-        out = F.relu(self.fc1(out))
-        out = ch.sigmoid(self.fc2(out))
+        if self.multiplier > 1:
+            out = F.relu(self.fc1(out))
+            out = ch.sigmoid(self.fc2(out))
+        else:
+            out = ch.sigmoid(self.fc1(out))
         return out
 
 
@@ -261,27 +268,76 @@ class SCNN(nn.Module):
         super().__init__()
         self.layers = nn.Sequential(
             nn.Sequential(
-            nn.Conv2d(3, 64, kernel_size=3, padding=0),
-            nn.BatchNorm2d(64, momentum=1, affine=True),
-            nn.ReLU(),
-            nn.MaxPool2d(2)),
+                nn.Conv2d(3, 64, kernel_size=3, padding=0),
+                nn.BatchNorm2d(64, momentum=1, affine=True),
+                nn.ReLU(),
+                nn.MaxPool2d(2)),
             nn.Sequential(
-            nn.Conv2d(64, 64, kernel_size=3, padding=0),
-            nn.BatchNorm2d(64, momentum=1, affine=True),
-            nn.ReLU(),
-            nn.MaxPool2d(2)),
+                nn.Conv2d(64, 64, kernel_size=3, padding=0),
+                nn.BatchNorm2d(64, momentum=1, affine=True),
+                nn.ReLU(),
+                nn.MaxPool2d(2)),
             nn.Sequential(
-            nn.Conv2d(64, 64, kernel_size=3, padding=1),
-            nn.BatchNorm2d(64, momentum=1, affine=True),
-            nn.ReLU()),
+                nn.Conv2d(64, 64, kernel_size=3, padding=1),
+                nn.BatchNorm2d(64, momentum=1, affine=True),
+                nn.ReLU()),
             nn.Sequential(
-            nn.Conv2d(64, 64, kernel_size=3, padding=1),
-            nn.BatchNorm2d(64, momentum=1, affine=True),
-            nn.ReLU())
+                nn.Conv2d(64, 64, kernel_size=3, padding=1),
+                nn.BatchNorm2d(64, momentum=1, affine=True),
+                nn.ReLU())
+        )
+        self.num_layers = 4
+    
+    def forward(self, x, latent: int = None):
+        if latent is not None:
+            if latent < 0 or latent > self.num_layers - 1:
+                raise ValueError("Invalid layer index")
+        out = x
+        j = 0
+        for i, layer in enumerate(self.layers):
+            out = layer(out)
+            if i == latent:
+                return out
+
+        return out
+
+
+class SCNNDeeper(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.layers = nn.Sequential(
+            nn.Sequential(
+                nn.Conv2d(3, 64, kernel_size=3, padding=0),
+                nn.BatchNorm2d(64, momentum=1, affine=True),
+                nn.ReLU(),
+                nn.MaxPool2d(2)),
+            nn.Sequential(
+                nn.Conv2d(64, 64, kernel_size=3, padding=0),
+                nn.BatchNorm2d(64, momentum=1, affine=True),
+                nn.ReLU(),
+                nn.MaxPool2d(2)),
+            nn.Sequential(
+                nn.Conv2d(64, 64, kernel_size=3, padding=1),
+                nn.BatchNorm2d(64, momentum=1, affine=True),
+                nn.ReLU(),
+                nn.MaxPool2d(2)),
+            nn.Sequential(
+                nn.Conv2d(64, 64, kernel_size=3, padding=1),
+                nn.BatchNorm2d(64, momentum=1, affine=True),
+                nn.ReLU(),
+                nn.MaxPool2d(2))
         )
     
-    def forward(self, x):
-        out = self.layers(x)
+    def forward(self, x, latent: int = None):
+        if latent is not None:
+            if latent < 0 or latent > 3:
+                raise ValueError("Invalid layer index")
+        out = x
+        for i, layer in enumerate(self.layers):
+            out = layer(out)
+            if i == latent:
+                return out
+
         return out
 
 
@@ -289,20 +345,25 @@ class GenericFaceAudit(BaseModel):
     def __init__(self,
                  model: nn.Module,
                  hidden_size: int,
-                 feat_dim: int):
+                 feat_dim: int,
+                 multiplier: int = 5):
         super().__init__(is_conv=True, is_contrastive_model=True, is_relation_based=True)
-        self.fe_model = model
+        self.features = model
         self.feat_dim = feat_dim
-        self.relation_network = RelationNetwork(input_size=self.feat_dim, hidden_size=hidden_size)
+        self.classifier = None
+        self.relation_network = RelationNetwork(
+            input_size=self.feat_dim, hidden_size=hidden_size,\
+                multiplier=multiplier)
 
     def forward(self, x: ch.Tensor,
-                embedding_mode: bool) -> ch.Tensor:
+                embedding_mode: bool,
+                latent: int = None) -> ch.Tensor:
         """
-            If embedding_mode is True, use self.fe_model
+            If embedding_mode is True, use self.features
             Else, use self.relation_network
         """        
         if embedding_mode:
-            feature = self.fe_model(x)
+            feature = self.features(x, latent=latent)
             return feature
         else:
             out = self.relation_network(x)
@@ -314,3 +375,10 @@ class SCNNFaceAudit(GenericFaceAudit):
                  feat_dim: int = 64):
         model = SCNN()
         super().__init__(model, feat_dim = feat_dim, hidden_size=100)
+
+
+class SCNNDeeperFaceAudit(GenericFaceAudit):
+    def __init__(self,
+                 feat_dim: int = 64):
+        model = SCNNDeeper()
+        super().__init__(model, feat_dim = feat_dim, hidden_size=100, multiplier=1)

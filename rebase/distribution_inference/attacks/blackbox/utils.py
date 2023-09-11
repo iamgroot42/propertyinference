@@ -188,11 +188,13 @@ def get_vic_adv_preds_on_distr_relation_net(
     num_support = ds_obj.relation_config.k_shot
     num_query = ds_obj.relation_config.num_query_test
 
+    """
     # Get loader (containing image of person of interest)
     _, loader_adv = ds_obj.get_loaders(shuffle=True, batch_size=batch_size, primed_for_training=False)
 
     # Generating vectors for victim
     # Collect images for person of interest
+
     imgs = []
     for batch in loader_adv:
         prop_labels = batch[2]
@@ -200,6 +202,8 @@ def get_vic_adv_preds_on_distr_relation_net(
         imgs.append(batch[0][prop_labels == 1])
     imgs = ch.cat(imgs, 0)
     split = _make_gallery_query_split(imgs, num_support)
+    """
+    
     relation_values_1, relation_values_2 = [], []
     """
     # Populate these values for models trained with and without subject of interest
