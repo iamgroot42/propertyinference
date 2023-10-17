@@ -20,9 +20,11 @@ from distribution_inference.training.utils import load_model
 class DatasetInformation(base.DatasetInformation):
     def __init__(self, epoch_wise: bool = False):
         ratios = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+        self.split_prefix = "75_25"
+        # self.split_prefix = "50_50"
         super().__init__(name="Celeb-A",
                          data_path="celeba",
-                         models_path="models_celeba/75_25_nobalancing",
+                         models_path=f"models_celeba/{self.split_prefix}_nobalancing",
                          properties=["Male", "Young",
                                      'Wavy_Hair', 'High_Cheekbones'],
                          values={"Male": ratios, "Young": ratios,
@@ -143,12 +145,12 @@ class DatasetInformation(base.DatasetInformation):
             picked_keys = np.array(list(mapping.keys()))[spl]
             collected_ids = np.concatenate([mapping[x] for x in picked_keys])
             vals = [attrs[pp].iloc[collected_ids].mean()
-                    for pp in self.self.preserve_properties]
+                    for pp in self.preserve_properties]
             return np.array(vals)
 
         # Take note of original ratios
         ratios = np.array([attrs[pp].mean()
-                          for pp in self.self.preserve_properties])
+                          for pp in self.preserve_properties])
 
         iterator = tqdm(range(n_tries))
         best_splits = None, None
@@ -239,13 +241,13 @@ class DatasetInformation(base.DatasetInformation):
                 f.writelines("%s\n" % l for l in data)
 
         save(test_adv_filenames, os.path.join(
-            "splits", "75_25", "adv", "test.txt"))
+            "splits", self.split_prefix, "adv", "test.txt"))
         save(test_victim_filenames, os.path.join(
-            "splits", "75_25", "victim", "test.txt"))
+            "splits", self.split_prefix, "victim", "test.txt"))
         save(train_adv_filenames, os.path.join(
-            "splits", "75_25", "adv", "train.txt"))
+            "splits", self.split_prefix, "adv", "train.txt"))
         save(train_victim_filenames, os.path.join(
-            "splits", "75_25", "victim", "train.txt"))
+            "splits", self.split_prefix, "victim", "train.txt"))
 
 
 class CelebACustomBinary(base.CustomDataset):
@@ -513,10 +515,10 @@ class CelebaWrapper(base.CustomDatasetWrapper):
         # Use relevant file split information
         filelist_train = os.path.join(
             self.info_object.base_data_dir,
-            "splits", "75_25", self.split, "train.txt")
+            "splits", self.info_object.split_prefix, self.split, "train.txt")
         filelist_test = os.path.join(
             self.info_object.base_data_dir,
-            "splits", "75_25", self.split, "test.txt")
+            "splits", self.info_object.split_prefix, self.split, "test.txt")
 
         # Define number of sub-samples
         prop_wise_subsample_sizes = {

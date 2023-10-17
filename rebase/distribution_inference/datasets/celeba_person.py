@@ -23,10 +23,11 @@ class DatasetInformation(base.DatasetInformation):
         # 0 (False) here means specified members not present in training data
         # 1 (True) here means specified members present in training data
         holdout_people = 100
+        self.split_prefix = "50_50"
         props = [str(x) for x in range(holdout_people)]
         super().__init__(name="Celeb-A Person",
                          data_path="celeba",
-                         models_path="models_celeba_person/50_50_split",
+                         models_path=f"models_celeba_person/{self.split_prefix}_split",
                          properties=props,
                          values={k: ratios for k in props},
                          supported_models=["scnn_relation", "scnn_deeper_relation"],
@@ -166,24 +167,24 @@ class DatasetInformation(base.DatasetInformation):
                 f.writelines("%s\n" % l for l in data)
 
         # Make sure directories exist (for split information)
-        os.makedirs(os.path.join(self.base_data_dir, "splits_person", "50_50", "adv"), exist_ok=True)
-        os.makedirs(os.path.join(self.base_data_dir, "splits_person", "50_50", "victim"), exist_ok=True)
+        os.makedirs(os.path.join(self.base_data_dir, "splits_person", self.split_prefix, "adv"), exist_ok=True)
+        os.makedirs(os.path.join(self.base_data_dir, "splits_person", self.split_prefix, "victim"), exist_ok=True)
 
         # Save audit-related information
         save(always_used_train, os.path.join(
-            "splits_person", "50_50", "victim", "always_used_train.txt"))
+            "splits_person", self.split_prefix, "victim", "always_used_train.txt"))
         save(always_used_audit, os.path.join(
-            "splits_person", "50_50", "adv", "always_used_audit.txt"))
+            "splits_person", self.split_prefix, "adv", "always_used_audit.txt"))
 
         # Save generated splits
         save(test_adv_people, os.path.join(
-            "splits_person", "50_50", "adv", "test.txt"))
+            "splits_person", self.split_prefix, "adv", "test.txt"))
         save(test_victim_people, os.path.join(
-            "splits_person", "50_50", "victim", "test.txt"))
+            "splits_person", self.split_prefix, "victim", "test.txt"))
         save(train_adv_people, os.path.join(
-            "splits_person", "50_50", "adv", "train.txt"))
+            "splits_person", self.split_prefix, "adv", "train.txt"))
         save(train_victim_people, os.path.join(
-            "splits_person", "50_50", "victim", "train.txt"))
+            "splits_person", self.split_prefix, "victim", "train.txt"))
 
 
 def make_mapping(labels):
@@ -385,10 +386,10 @@ class CelebaPersonWrapper(base.CustomDatasetWrapper):
         # Use relevant file split information
         people_list_train = os.path.join(
             self.info_object.base_data_dir,
-            "splits_person", "50_50", self.split, "train.txt")
+            "splits_person", self.info_object.split_prefix, self.split, "train.txt")
         people_list_test = os.path.join(
             self.info_object.base_data_dir,
-            "splits_person", "50_50", self.split, "test.txt")
+            "splits_person", self.info_object.split_prefix, self.split, "test.txt")
         
         n_people_train = self.n_people
         if self.split == "victim" and self.ratio == 1:
@@ -418,7 +419,7 @@ class CelebaPersonWrapper(base.CustomDatasetWrapper):
             # Will be part of training
             people_always_used = os.path.join(
                 self.info_object.base_data_dir,
-                "splits_person", "50_50", "victim", "always_used_train.txt")
+                "splits_person", self.info_object.split_prefix, "victim", "always_used_train.txt")
             filenames_always_train, labels_always_train = self._load_data_for_always_included_people(people_always_used)
             if len(set(labels_train).intersection(set(labels_always_train))) != 0:
                 raise ValueError("Intersection between train and always_used_train is not empty- this should not happen!")
@@ -430,7 +431,7 @@ class CelebaPersonWrapper(base.CustomDatasetWrapper):
             # Will be part of testing (for auditing)
             people_always_used = os.path.join(
                 self.info_object.base_data_dir,
-                "splits_person", "50_50", "adv", "always_used_audit.txt")
+                "splits_person", self.info_object.split_prefix, "adv", "always_used_audit.txt")
             filenames_always_test, labels_always_test = self._load_data_for_always_included_people(people_always_used)
             filenames_test = np.concatenate((filenames_test, filenames_always_test))
             person_of_interest_indicator = np.zeros(len(filenames_test))
@@ -485,7 +486,7 @@ class CelebaPersonWrapper(base.CustomDatasetWrapper):
         # Use relevant file split information
         people_list_train = os.path.join(
             self.info_object.base_data_dir,
-            "splits_person", "50_50", self.split, "train.txt")
+            "splits_person", self.info_object.split_prefix, self.split, "train.txt")
         with open(people_list_train, 'r') as f:
             wanted_people = f.read().splitlines()
         wanted_people = set([int(x) for x in wanted_people])

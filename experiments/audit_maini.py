@@ -4,16 +4,15 @@
 """
 from simple_parsing import ArgumentParser
 from pathlib import Path
+import torch as ch
 
 from distribution_inference.datasets.utils import get_dataset_wrapper, get_dataset_information
-from distribution_inference.datasets.base import get_loader_for_data
 from distribution_inference.attacks.utils import get_dfs_for_victim_and_adv
 from distribution_inference.config import DatasetConfig, AttackConfig, WhiteBoxAttackConfig, TrainConfig
 from distribution_inference.utils import flash_utils
 from distribution_inference.attacks.whitebox.maini_neuron.maini_neuron import MainiNeuronAttack
 
 from distribution_inference.datasets._contrastive_utils import NWays, KShots, LoadData, RemapLabels, TaskDataset, MetaDataset
-from distribution_inference.training.relation_net import train as relationnet_train
 
 
 if __name__ == "__main__":
@@ -78,24 +77,36 @@ if __name__ == "__main__":
     _, val_loader = ds_adv.get_loaders(
         batch_size=train_config.batch_size)
 
+    n_pick = 50
     # For each victim model
     for model, extra in zip(models_vic, extra_info):
         train_users = extra[0]
         # Pick 25 users (for now)
-        train_users = train_users[:25]
+        train_users = train_users[:n_pick]
 
         # Get ds object with specified users
         ds_users = ds_adv.load_specified_data(train_users)
 
-        # Get DS for non-members
+        # List of other people
         train_people_other = ds_adv.get_non_members(train_users)
 
-        ds_others = ds_adv.load_specified_data(train_people_other)
+        # Split this into two (random)
+        train_people_other_ref = train_people_other[:len(train_people_other) // 2]
+        train_people_other_baseline = train_people_other[len(train_people_other) // 2:]
+
+        # Also get a ds object for some other non-members
+        ds_non_users = ds_adv.load_specified_data(train_people_other_baseline[:n_pick])
+
+        # Get DS for non-members
+        ds_others = ds_adv.load_specified_data(train_people_other_ref)
         # Wrap loader_others to make it compatible with k-way n-shot
         ds_others  = MetaDataset(ds_others)
+        n_ways = 5
+        n_shot = 5
+        n_query = 10
         transforms_task = [
-            NWays(ds_others, 5 - 1),
-            KShots(ds_others, 5 + 5),
+            NWays(ds_others, n_ways - 1),
+            KShots(ds_others, n_shot + n_query),
             LoadData(ds_others),
             RemapLabels(ds_others)
         ]
@@ -107,8 +118,38 @@ if __name__ == "__main__":
             # Create attacker object
             attacker_obj = MainiNeuronAttack(wb_attack_config)
 
-            # Execute attack
-            attacker_obj.execute_attack(
-                model=model,
-                ds_members=ds_users,
-                loader_nonmembers=train_dset,)
+            # Compute statistics for in-users
+            users_in, (names_in, locs_in, successes_in) = attacker_obj.execute_attack(
+                                                    model=model,
+                                                    ds_members=ds_users,
+                                                    loader_nonmembers=train_dset,
+                                                    n_ways=n_ways,
+                                                    n_shot=n_shot,
+                                                    n_query=n_query,)
+            
+            # Compute statistics for out-users
+            users_out, (names_out, locs_out, successes_out) = attacker_obj.execute_attack(
+                                                    model=model,
+                                                    ds_members=ds_non_users,
+                                                    loader_nonmembers=train_dset,
+                                                    n_ways=n_ways,
+                                                    n_shot=n_shot,
+                                                    n_query=n_query,)
+            
+            
+            # Save in torch dictionary
+            save_dict = {
+                "in": {
+                    "users": users_in,
+                    "names": names_in,
+                    "locs": locs_in,
+                    "successes": successes_in,
+                },
+                "out": {
+                    "users": users_out,
+                    "names": names_out,
+                    "locs": locs_out,
+                    "successes": successes_out,
+                }
+            }
+            ch.save(save_dict, f"{args.en}_{trial+1}.pt")

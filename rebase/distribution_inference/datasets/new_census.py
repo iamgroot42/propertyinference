@@ -17,9 +17,10 @@ from distribution_inference.training.utils import load_model
 class DatasetInformation(base.DatasetInformation):
     def __init__(self, epoch_wise: bool = False):
         ratios = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+        self.split_prefix = "60_40"
         super().__init__(name="New Census",
                          data_path="census_new/census_2019_1year",
-                         models_path="models_new_census/60_40_nobalancing",
+                         models_path=f"models_new_census/{self.split_prefix}_nobalancing",
                          properties=["sex", "race"],
                          values={"sex": ratios, "race": ratios},
                          supported_models=["mlp2", "random_forest", "lr", "mlp3"],

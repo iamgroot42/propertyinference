@@ -31,9 +31,10 @@ import pickle
 class DatasetInformation(base.DatasetInformation):
     def __init__(self, epoch_wise: bool = False):
         ratios = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+        self.split_prefix = "75_25"
         super().__init__(name="MAADFaceMale",
                          data_path="vggface2",
-                         models_path="models_maadface/75_25_nobalancing",
+                         models_path=f"models_maadface/{self.split_prefix}_nobalancing",
                          properties=['Male'],
                          values={"Male": ratios},
                          supported_models=["arcface_resnet"],

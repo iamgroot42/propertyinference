@@ -6,3 +6,5 @@ __pycache__/*
 
 testing_training/*
 .ipynb_checkpoints/*
+
+*.pt
