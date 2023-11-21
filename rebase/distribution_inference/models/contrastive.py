@@ -233,12 +233,12 @@ class RelationNetwork(nn.Module):
         super(RelationNetwork, self).__init__()
         self.layer1 = nn.Sequential(
             nn.Conv2d(input_size*2, 64, kernel_size=3, padding=1),
-            nn.BatchNorm2d(64, momentum=1, affine=True),
+            nn.BatchNorm2d(64, momentum=0.1, affine=True),
             nn.ReLU(),
             nn.MaxPool2d(2))
         self.layer2 = nn.Sequential(
             nn.Conv2d(64, 64, kernel_size=3, padding=1),
-            nn.BatchNorm2d(64, momentum=1, affine=True),
+            nn.BatchNorm2d(64, momentum=0.1, affine=True),
             nn.ReLU(),
             nn.MaxPool2d(2))
         self.multiplier = multiplier
@@ -269,21 +269,21 @@ class SCNN(nn.Module):
         self.layers = nn.Sequential(
             nn.Sequential(
                 nn.Conv2d(3, 64, kernel_size=3, padding=0),
-                nn.BatchNorm2d(64, momentum=1, affine=True),
+                nn.BatchNorm2d(64, momentum=0.1, affine=True),
                 nn.ReLU(),
                 nn.MaxPool2d(2)),
             nn.Sequential(
                 nn.Conv2d(64, 64, kernel_size=3, padding=0),
-                nn.BatchNorm2d(64, momentum=1, affine=True),
+                nn.BatchNorm2d(64, momentum=0.1, affine=True),
                 nn.ReLU(),
                 nn.MaxPool2d(2)),
             nn.Sequential(
                 nn.Conv2d(64, 64, kernel_size=3, padding=1),
-                nn.BatchNorm2d(64, momentum=1, affine=True),
+                nn.BatchNorm2d(64, momentum=0.1, affine=True),
                 nn.ReLU()),
             nn.Sequential(
                 nn.Conv2d(64, 64, kernel_size=3, padding=1),
-                nn.BatchNorm2d(64, momentum=1, affine=True),
+                nn.BatchNorm2d(64, momentum=0.1, affine=True),
                 nn.ReLU())
         )
         self.num_layers = 4
@@ -308,22 +308,22 @@ class SCNNDeeper(nn.Module):
         self.layers = nn.Sequential(
             nn.Sequential(
                 nn.Conv2d(3, 64, kernel_size=3, padding=0),
-                nn.BatchNorm2d(64, momentum=1, affine=True),
+                nn.BatchNorm2d(64, momentum=0.1, affine=True),
                 nn.ReLU(),
                 nn.MaxPool2d(2)),
             nn.Sequential(
                 nn.Conv2d(64, 64, kernel_size=3, padding=0),
-                nn.BatchNorm2d(64, momentum=1, affine=True),
+                nn.BatchNorm2d(64, momentum=0.1, affine=True),
                 nn.ReLU(),
                 nn.MaxPool2d(2)),
             nn.Sequential(
                 nn.Conv2d(64, 64, kernel_size=3, padding=1),
-                nn.BatchNorm2d(64, momentum=1, affine=True),
+                nn.BatchNorm2d(64, momentum=0.1, affine=True),
                 nn.ReLU(),
                 nn.MaxPool2d(2)),
             nn.Sequential(
                 nn.Conv2d(64, 64, kernel_size=3, padding=1),
-                nn.BatchNorm2d(64, momentum=1, affine=True),
+                nn.BatchNorm2d(64, momentum=0.1, affine=True),
                 nn.ReLU(),
                 nn.MaxPool2d(2))
         )

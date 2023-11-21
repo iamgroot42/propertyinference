@@ -14,7 +14,6 @@ from distribution_inference.utils import warning_string
 from tqdm import tqdm
 
 from transformers import WhisperFeatureExtractor
-from transformers import WhisperTokenizer
 from datasets import Audio
 
 from datasets import load_dataset, concatenate_datasets, load_from_disk
@@ -27,9 +26,13 @@ class DatasetInformation(base.DatasetInformation):
         # 1 (True) here means specified member present in training data
         holdout_people = 20
         props = [str(x) for x in range(holdout_people)]
+        # self.data_quality_split = "clean" # clean/other
+        self.data_quality_split = "other" # clean/other
+        models_dir = f"models_librispeech_{self.data_quality_split}/"
+
         super().__init__(name="Librispeech",
                          data_path="librispeech",
-                         models_path="models_librispeech/",
+                         models_path=models_dir,
                          properties=props,
                          values={k: ratios for k in props},
                          supported_models=["whisper-small", "whisper-tiny", "whisper-base"],
@@ -75,11 +78,25 @@ class DatasetInformation(base.DatasetInformation):
             using the given dataset. Use this method only once for the
             same set of experiments.
         """
-        train_1 = load_dataset("librispeech_asr", "clean", split="train.100", cache_dir=self.base_data_dir)
-        train_2 = load_dataset("librispeech_asr", "clean", split="train.360", cache_dir=self.base_data_dir)
-        assert len(set(train_1['speaker_id']).intersection(set(train_2['speaker_id']))) == 0, "Speaker IDs overlap between train.100 (adv) and train.360 (victim)"
-        victim_data = train_2
-        victim_data = victim_data.remove_columns(["chapter_id", "id", "file"])
+        if self.data_quality_split == "clean":
+            train_1 = load_dataset("librispeech_asr", self.data_quality_split, split="train.100", cache_dir=self.base_data_dir)
+            train_2 = load_dataset("librispeech_asr", self.data_quality_split, split="train.360", cache_dir=self.base_data_dir)
+            assert len(set(train_1['speaker_id']).intersection(set(train_2['speaker_id']))) == 0, "Speaker IDs overlap between train.100 (adv) and train.360 (victim)"
+            victim_data = train_2
+            adv_data = train_1
+            victim_data = victim_data.remove_columns(["chapter_id", "id", "file"])
+        else:
+            train_all = load_dataset("librispeech_asr", self.data_quality_split, split="train.500", cache_dir=self.base_data_dir)
+            # Get unique speaker_IDs from dataset
+            speaker_id_info = train_all["speaker_id"]
+            speaker_ids = np.unique(speaker_id_info)
+            # Split such that 1:3 victim:adv split
+            np.random.shuffle(speaker_ids)
+            victim_speaker_ids = speaker_ids[:int(len(speaker_ids) * 0.75)]
+            adv_speaker_ids = speaker_ids[int(len(speaker_ids) * 0.75):]
+            # Use these picked speakers to create victim and adv data
+            victim_data = train_all.select(np.where(np.isin(speaker_id_info, victim_speaker_ids))[0])
+            adv_data = train_all.select(np.where(np.isin(speaker_id_info, adv_speaker_ids))[0])
 
         # Get all unique speaker-IDs in librispeech['train'] and shuffle
         speaker_id_info = victim_data["speaker_id"]
@@ -116,7 +133,7 @@ class DatasetInformation(base.DatasetInformation):
         # We want to set aside some recordings some person for 'audit' i.e.
         # Running our attacks locally and computing thresholds
         adv_audit_splits, adv_train_splits = [], []
-        adv_speaker_ids = train_1['speaker_id']
+        adv_speaker_ids = adv_data['speaker_id']
         adv_speakers = np.unique(adv_speaker_ids)
         for speaker_id in tqdm(adv_speakers, "Setting aside recordings (adv) for holdout"):
             person_instances = np.where(adv_speaker_ids == speaker_id)[0]
@@ -126,24 +143,25 @@ class DatasetInformation(base.DatasetInformation):
             adv_train_splits.append(person_instances[self.hold_per_person_adv:])
 
         # Combine split data across all subjects (adv)
-        adv_audit_splits = train_1.select(np.concatenate(adv_audit_splits))
-        adv_train_splits = train_1.select(np.concatenate(adv_train_splits))
+        adv_audit_splits = adv_data.select(np.concatenate(adv_audit_splits))
+        adv_train_splits = adv_data.select(np.concatenate(adv_train_splits))
 
         # Make sure directories exist (for split information)
-        os.makedirs(os.path.join(self.base_data_dir, "splits_person", "adv"), exist_ok=True)
-        os.makedirs(os.path.join(self.base_data_dir, "splits_person", "victim"), exist_ok=True)
+        os.makedirs(os.path.join(self.base_data_dir, f"splits_person_{self.data_quality_split}", "adv"), exist_ok=True)
+        os.makedirs(os.path.join(self.base_data_dir, f"splits_person_{self.data_quality_split}", "victim"), exist_ok=True)
 
         # Save files
         # For audit people
-        audit_splits.save_to_disk(os.path.join(self.base_data_dir, "splits_person", "adv", "audit_subjects"))
-        train_splits.save_to_disk(os.path.join(self.base_data_dir, "splits_person", "victim", "audit_subjects"))
+        audit_splits.save_to_disk(os.path.join(self.base_data_dir, f"splits_person_{self.data_quality_split}", "adv", "audit_subjects"))
+        train_splits.save_to_disk(os.path.join(self.base_data_dir, f"splits_person_{self.data_quality_split}", "victim", "audit_subjects"))
         # And adversary's data splits
-        adv_audit_splits.save_to_disk(os.path.join(self.base_data_dir, "splits_person", "adv", "holdout_subjects"))
-        adv_train_splits.save_to_disk(os.path.join(self.base_data_dir, "splits_person", "adv", "train_subjects"))
+        adv_audit_splits.save_to_disk(os.path.join(self.base_data_dir, f"splits_person_{self.data_quality_split}", "adv", "holdout_subjects"))
+        adv_train_splits.save_to_disk(os.path.join(self.base_data_dir, f"splits_person_{self.data_quality_split}", "adv", "train_subjects"))
+        # If using train.500, also need to save victim data explicitly (since it is a subset of train.500, not train.360 like the case of 'clean')
 
-        # Save info on people  to sample for (for victim training)
-        np.savetxt(os.path.join(self.base_data_dir, "splits_person", "victim", "train.txt"), remaining_speaker_ids_indices, delimiter=',')
-        np.savetxt(os.path.join(self.base_data_dir, "splits_person", "audit_speaker_ids.txt"), audit_speaker_ids, delimiter=',')
+        # Save info on people to sample for (for victim training)
+        np.savetxt(os.path.join(self.base_data_dir, f"splits_person_{self.data_quality_split}", "victim", "train.txt"), remaining_speaker_ids_indices, delimiter=',')
+        np.savetxt(os.path.join(self.base_data_dir, f"splits_person_{self.data_quality_split}", "audit_speaker_ids.txt"), audit_speaker_ids, delimiter=',')
     
     def prepare_processed_data(self):
         """
@@ -164,46 +182,53 @@ class DatasetInformation(base.DatasetInformation):
         os.makedirs(os.path.join(self.base_data_dir, "processed", "victim"), exist_ok=True)
         os.makedirs(os.path.join(self.base_data_dir, "processed", "adv"), exist_ok=True)
 
-        # Adversary's holdout data"
-        adv_holdout = load_from_disk(os.path.join(self.base_data_dir, "splits_person", "adv", "holdout_subjects"))
+        # Adversary's holdout data
+        adv_holdout = load_from_disk(os.path.join(self.base_data_dir, f"splits_person_{self.data_quality_split}", "adv", "holdout_subjects"))
         adv_holdout = process(adv_holdout)
         adv_holdout.save_to_disk(os.path.join(self.base_data_dir, "processed", "adv", "holdout_subjects"))
         adv_holdout.cleanup_cache_files()
         print("Processed adversary (holdout) data!")
         # Adversary's train data
-        adv_train = load_from_disk(os.path.join(self.base_data_dir, "splits_person", "adv", "train_subjects"))
+        adv_train = load_from_disk(os.path.join(self.base_data_dir, f"splits_person_{self.data_quality_split}", "adv", "train_subjects"))
         adv_train = process(adv_train)
         adv_train.save_to_disk(os.path.join(self.base_data_dir, "processed", "adv", "train_subjects"))
         adv_train.cleanup_cache_files()
         print("Processed adversary train (use) data!")
         # Adversary's test data
-        adv_test = load_dataset("librispeech_asr", "clean", split="validation", cache_dir=self.base_data_dir)
+        adv_test = load_dataset("librispeech_asr", self.data_quality_split, split="validation", cache_dir=self.base_data_dir)
         adv_test = process(adv_test)
         adv_test.save_to_disk(os.path.join(self.base_data_dir, "processed", "adv", "test"))
         adv_test.cleanup_cache_files()
         print("Processed adversary test data!")
 
         # Victim's train data
-        victim_train = load_dataset("librispeech_asr", "clean", split="train.360", cache_dir=self.base_data_dir)
+        if self.data_quality_split == "clean":
+            # train.360 is directly victim's train data, not much to think about
+            victim_train = load_dataset("librispeech_asr", self.data_quality_split, split="train.360", cache_dir=self.base_data_dir)
+        else:
+            # victim data is a subset of train.500, so need to load train.500 and filter
+            victim_train = load_dataset("librispeech_asr", self.data_quality_split, split="train.500", cache_dir=self.base_data_dir)
+            select_indices = np.loadtxt(os.path.join(self.base_data_dir, f"splits_person_{self.data_quality_split}", "victim", "train.txt"), delimiter=',')
+            victim_train = victim_train.select(select_indices)
         victim_train = process(victim_train)
         victim_train.save_to_disk(os.path.join(self.base_data_dir, "processed", "victim", "train"))
         victim_train.cleanup_cache_files()
         print("Processed victim train data!")
         # Victim's test data
-        victim_test = load_dataset("librispeech_asr", "clean", split="test", cache_dir=self.base_data_dir)
+        victim_test = load_dataset("librispeech_asr", self.data_quality_split, split="test", cache_dir=self.base_data_dir)
         victim_test = process(victim_test)
         victim_test.save_to_disk(os.path.join(self.base_data_dir, "processed", "victim", "test"))
         victim_test.cleanup_cache_files()
         print("Processed victim test data!")
 
         # Audit's train data
-        audit_train = load_from_disk(os.path.join(self.base_data_dir, "splits_person", "victim", "audit_subjects"))
+        audit_train = load_from_disk(os.path.join(self.base_data_dir, f"splits_person_{self.data_quality_split}", "victim", "audit_subjects"))
         audit_train = process(audit_train)
         audit_train.save_to_disk(os.path.join(self.base_data_dir, "processed", "victim", "audit_subjects"))
         audit_train.cleanup_cache_files()
         print("Processed audit (train) data!")
         # Audit's auditing test
-        audit_holdout = load_from_disk(os.path.join(self.base_data_dir, "splits_person", "adv", "audit_subjects"))
+        audit_holdout = load_from_disk(os.path.join(self.base_data_dir, f"splits_person_{self.data_quality_split}", "adv", "audit_subjects"))
         audit_holdout = process(audit_holdout)
         audit_holdout.save_to_disk(os.path.join(self.base_data_dir, "processed", "adv", "audit_subjects"))
         audit_holdout.cleanup_cache_files()
@@ -271,10 +296,16 @@ class LibriSpeechWrapper(base.CustomDatasetWrapper):
         if int(self.prop) < 0 or int(self.prop) >= self.info_object.holdout_people:
             raise ValueError(f"Invalid prop: {int(self.prop)}. Must be in [0, {self.info_object.holdout_people})")
 
-        self._prop_wise_subsample_sizes = {
-            "adv": (200, 30), # Out of (251, 40)
-            "victim": (750, 30) # Out of (901, 40)
-        }
+        if self.info_object.data_quality_split == "clean":
+            self._prop_wise_subsample_sizes = {
+                "adv": (200, 30), # Out of (251, 40) [clean]
+                "victim": (750, 30) # Out of (901, 40) [clean]
+            }
+        else:
+            self._prop_wise_subsample_sizes = {
+                "adv": (200, 25), # Out of (292, 33) [other]
+                "victim": (720, 25) # Out of (868, 33) [other]
+            }
         self.n_people, self.n_people_test = self._prop_wise_subsample_sizes[self.split]
 
     """
@@ -300,9 +331,10 @@ class LibriSpeechWrapper(base.CustomDatasetWrapper):
         train_source = load_from_disk(os.path.join(base_data_dir, "processed", self.split, "train_subjects" if self.split == "adv" else "train"))
         test_source = load_from_disk(os.path.join(base_data_dir, "processed", self.split, "test"))
  
-        if self.split == "victim":
+        #  Only need to filter further if 'clean', since 'other' was already filtered earlier
+        if self.split == "victim" and self.info_object.data_quality_split == "clean":
             # Pick all non-audit people
-            select_indices = np.loadtxt(os.path.join(base_data_dir, "splits_person", "victim", "train.txt"), delimiter=',')
+            select_indices = np.loadtxt(os.path.join(base_data_dir, f"splits_person_{self.info_object.data_quality_split}", "victim", "train.txt"), delimiter=',')
             train_source = train_source.select(select_indices)
         
         n_people_train = self.n_people
@@ -323,7 +355,7 @@ class LibriSpeechWrapper(base.CustomDatasetWrapper):
         person_of_interest_indicator = None
         if self.ratio == 1:
             # Load information about audit speakers
-            audit_speaker_ids = np.loadtxt(os.path.join(base_data_dir, "splits_person", "audit_speaker_ids.txt"), delimiter=',')
+            audit_speaker_ids = np.loadtxt(os.path.join(base_data_dir, f"splits_person_{self.info_object.data_quality_split}", "audit_speaker_ids.txt"), delimiter=',')
             # Pick the one requested
             wanted_speaker = audit_speaker_ids[int(self.prop)]
             extra_ds_load = load_from_disk(os.path.join(base_data_dir, "processed", self.split, "audit_subjects"))
@@ -361,9 +393,20 @@ class LibriSpeechWrapper(base.CustomDatasetWrapper):
 
     def get_non_members(self, used_ids: List[int]):
         # Use relevant file split information
-        train_source = load_dataset(
-            "librispeech_asr", "clean", split="train.100" if self.split == "adv" else "train.360",
-            cache_dir=self.info_object.base_data_dir)
+        if self.info_object.data_quality_split == "clean":
+            # Directly use train.100 (adv) or train.360 (victim)
+            train_source = load_dataset(
+                "librispeech_asr", self.info_object.data_quality_split, split="train.100" if self.split == "adv" else "train.360",
+                cache_dir=self.info_object.base_data_dir)
+        else:
+            # Load train.500 and short-list based on split information
+            train_source = load_dataset(
+                "librispeech_asr", self.info_object.data_quality_split, split="train.500",
+                cache_dir=self.info_object.base_data_dir)
+            select_indices = np.loadtxt(os.path.join(
+                self.info_object.base_data_dir, f"splits_person_{self.info_object.data_quality_split}", self.split, "train.txt"), delimiter=',')
+            train_source = train_source.select(select_indices)
+            
         people_all_train = set(train_source["speaker_id"])
         non_members = people_all_train.difference(set(used_ids))
         return np.array(list(non_members))
@@ -399,7 +442,6 @@ class LibriSpeechWrapper(base.CustomDatasetWrapper):
             raise ValueError(f"Model architecture {model_arch} not supported")
 
         base_models_dir = os.path.join(base_models_dir, model_arch)
-
         save_path = os.path.join(base_models_dir, subfolder_prefix)
 
         # # Make sure this directory exists

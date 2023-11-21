@@ -640,16 +640,20 @@ def make_gallery_query_splits(loader,
                               num_support: int,
                               num_task: int,
                               num_query: int):
+    """
+        Break data-loader down into user-wise gallery/query splits
+    """
     image_map = {}
-    for i, batch in enumerate(loader):
+    for i, batch in tqdm(enumerate(loader), desc="Making gallery/query splits"):
         images = batch[0]
         labels = batch[1]
-        for l in labels:
-            l_ = l.item()
-            if l_ not in image_map:
-                image_map[l_] = []
-            image_map[l_].append(images[labels == l_])
-        if len(image_map) >= num_task and sum([len(v) >= num_support + num_query for v in image_map.values()]) >= num_task:
+        # For each unique label in this loader
+        for l in np.unique(labels):
+            if l not in image_map:
+                image_map[l] = []
+            image_map[l].append(images[labels == l])
+        # Break when we have at least num_task people of people with >= num_support + num_query images
+        if sum([len(v) >= num_support + num_query for v in image_map.values()]) >= num_task:
             break
     for k in image_map.keys():
         image_map[k] = ch.cat(image_map[k], dim=0)

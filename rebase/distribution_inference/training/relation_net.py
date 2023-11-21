@@ -38,7 +38,7 @@ def fast_adapt(model, data, labels, ways: int, shot: int, query_num: int, get_pr
     batches = data[query_indices]
     batch_labels = labels[query_indices]
 
-    # 1. Collect mean embedding ("prototype") for each class based on embedding
+    # 1. Collect sum embedding ("prototype") for each class based on embedding [original paper also used sum, so sticking to that]
     # 2. Use relation model to get "similarity" between each query image and each class prototype
     # 3. Use similarity to predict class of each query image
 
@@ -48,7 +48,7 @@ def fast_adapt(model, data, labels, ways: int, shot: int, query_num: int, get_pr
                                             sample_features.shape[2],
                                             sample_features.shape[3])
     feat_dim = sample_features.shape[2]
-    sample_features = ch.mean(sample_features, 1).squeeze(1)
+    sample_features = ch.sum(sample_features, 1).squeeze(1)
     # 20x64*5*5
     batch_features = model(batches, embedding_mode=True)
 
