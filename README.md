@@ -1,4 +1,4 @@
-# Dissecting Distribution Inference
+# Distribution Inference
 
 Exploratory experiments and attacks on various datasets across several domains.
 Folder structure:
