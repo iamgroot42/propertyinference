@@ -1,0 +1,13 @@
+{
+    "data_config": {
+        "name": "celeba",
+        "prop": "Male",
+        "classify": "Smiling",
+        "split": "victim",
+        "value": 0.5,
+        "processed_variant": false
+    },
+    "epochs": 10,
+    "learning_rate": 0.0001,
+    "batch_size": 16
+}
